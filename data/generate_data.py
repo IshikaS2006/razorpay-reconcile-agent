@@ -213,6 +213,53 @@ def write_csv(path, rows, fieldnames):
         w.writeheader()
         w.writerows(rows)
 
+# ============================================================
+# Deliberately inject tax/fee math anomalies into a few individual payments,
+# to test the tax-line verification module. Correct formula: fee = 2.36% of
+# gross, tax = 18% of fee. A few rows get a wrong REPORTED fee or tax --
+# note settled_amount is deliberately left UNCHANGED, so this does not
+# affect batch totals or bank-side matching at all. This models a real
+# bookkeeping issue: the settlement report's own line items don't add up
+# internally, independent of whether the bank credit itself is correct.
+# ============================================================
+rows_tax_truth = []
+n_tax_anomalies = 3
+anomaly_indices = random.sample(range(len(rows_settlement)), n_tax_anomalies)
+
+for idx in anomaly_indices:
+    r = rows_settlement[idx]
+    anomaly_kind = random.choice(["wrong_fee_rate", "wrong_gst_rate"])
+    correct_fee = r["fee"]
+    correct_tax = r["tax"]
+
+    if anomaly_kind == "wrong_fee_rate":
+        wrong_rate = random.choice([0.018, 0.03])
+        reported_fee = int(round(r["amount"] * wrong_rate))
+        reported_tax = correct_tax
+        note = f"Reported fee uses {wrong_rate*100:.1f}% instead of the standard 2.36% MDR rate"
+    else:
+        wrong_gst = random.choice([0.12, 0.28])
+        reported_fee = correct_fee
+        reported_tax = int(round(correct_fee * wrong_gst))
+        note = f"Reported GST uses {wrong_gst*100:.0f}% of fee instead of the standard 18%"
+
+    r["fee"] = reported_fee
+    r["tax"] = reported_tax
+
+    rows_tax_truth.append({
+        "entity_id": r["entity_id"],
+        "expected_fee": correct_fee,
+        "expected_tax": correct_tax,
+        "reported_fee": reported_fee,
+        "reported_tax": reported_tax,
+        "anomaly_kind": anomaly_kind,
+        "notes": note,
+    })
+
+write_csv("tax_ground_truth.csv", rows_tax_truth,
+    ["entity_id","expected_fee","expected_tax","reported_fee","reported_tax","anomaly_kind","notes"])
+print(f"tax_ground_truth.csv    : {len(rows_tax_truth)} deliberate fee/GST reporting anomalies injected")
+
 write_csv("settlement_report.csv", rows_settlement,
     ["entity_id","type","order_id","amount","fee","tax","settled_amount","settlement_id","settlement_utr","settled_at"])
 write_csv("bank_ledger.csv", rows_ledger,

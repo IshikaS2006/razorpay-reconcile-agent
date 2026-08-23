@@ -1,0 +1,4 @@
+entity_id,expected_fee,expected_tax,reported_fee,reported_tax,anomaly_kind,notes
+pay_200019RP,10903,1963,10903,1308,wrong_gst_rate,Reported GST uses 12% of fee instead of the standard 18%
+pay_200033RP,14883,2679,18919,2679,wrong_fee_rate,Reported fee uses 3.0% instead of the standard 2.36% MDR rate
+pay_200018RP,7895,1421,7895,947,wrong_gst_rate,Reported GST uses 12% of fee instead of the standard 18%
