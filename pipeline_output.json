@@ -1,0 +1,205 @@
+{
+  "run_at": "2026-08-23T15:41:27.830061",
+  "llm_available": true,
+  "summary": {
+    "total_settlement_batches": 20,
+    "matched_batches": 19,
+    "match_rate_pct": 95.0,
+    "total_exceptions": 7,
+    "db_side_exceptions": 5
+  },
+  "matches": [
+    {
+      "settlement_id": "setl_100001RP",
+      "matched_entry_id": "LDG00001",
+      "tier": "exact",
+      "confidence": 1.0,
+      "reason": "UTR present, amount exact, date exact"
+    },
+    {
+      "settlement_id": "setl_100005RP",
+      "matched_entry_id": "LDG00006",
+      "tier": "exact",
+      "confidence": 1.0,
+      "reason": "UTR present, amount exact, date exact"
+    },
+    {
+      "settlement_id": "setl_100006RP",
+      "matched_entry_id": "LDG00007",
+      "tier": "exact",
+      "confidence": 1.0,
+      "reason": "UTR present, amount exact, date exact"
+    },
+    {
+      "settlement_id": "setl_100008RP",
+      "matched_entry_id": "LDG00009",
+      "tier": "exact",
+      "confidence": 1.0,
+      "reason": "UTR present, amount exact, date exact"
+    },
+    {
+      "settlement_id": "setl_100010RP",
+      "matched_entry_id": "LDG00011",
+      "tier": "exact",
+      "confidence": 1.0,
+      "reason": "UTR present, amount exact, date exact"
+    },
+    {
+      "settlement_id": "setl_100012RP",
+      "matched_entry_id": "LDG00013",
+      "tier": "exact",
+      "confidence": 1.0,
+      "reason": "UTR present, amount exact, date exact"
+    },
+    {
+      "settlement_id": "setl_100014RP",
+      "matched_entry_id": "LDG00015",
+      "tier": "exact",
+      "confidence": 1.0,
+      "reason": "UTR present, amount exact, date exact"
+    },
+    {
+      "settlement_id": "setl_100016RP",
+      "matched_entry_id": "LDG00017",
+      "tier": "exact",
+      "confidence": 1.0,
+      "reason": "UTR present, amount exact, date exact"
+    },
+    {
+      "settlement_id": "setl_100017RP",
+      "matched_entry_id": "LDG00018",
+      "tier": "exact",
+      "confidence": 1.0,
+      "reason": "UTR present, amount exact, date exact"
+    },
+    {
+      "settlement_id": "setl_100019RP",
+      "matched_entry_id": "LDG00020",
+      "tier": "exact",
+      "confidence": 1.0,
+      "reason": "UTR present, amount exact, date exact"
+    },
+    {
+      "settlement_id": "setl_100002RP",
+      "matched_entry_id": "LDG00003",
+      "tier": "fuzzy",
+      "confidence": 0.7,
+      "reason": "UTR recognizable in narration despite formatting"
+    },
+    {
+      "settlement_id": "setl_100003RP",
+      "matched_entry_id": "LDG00004",
+      "tier": "fuzzy",
+      "confidence": 0.89,
+      "reason": "Amount within 1056p, date within 0d"
+    },
+    {
+      "settlement_id": "setl_100004RP",
+      "matched_entry_id": "LDG00005",
+      "tier": "fuzzy",
+      "confidence": 0.9,
+      "reason": "Amount within 0p, date within 0d"
+    },
+    {
+      "settlement_id": "setl_100009RP",
+      "matched_entry_id": "LDG00010",
+      "tier": "fuzzy",
+      "confidence": 0.88,
+      "reason": "Amount within 0p, date within 1d"
+    },
+    {
+      "settlement_id": "setl_100011RP",
+      "matched_entry_id": "LDG00012",
+      "tier": "fuzzy",
+      "confidence": 0.89,
+      "reason": "Amount within 1154p, date within 0d"
+    },
+    {
+      "settlement_id": "setl_100013RP",
+      "matched_entry_id": "LDG00014",
+      "tier": "fuzzy",
+      "confidence": 0.7,
+      "reason": "UTR recognizable in narration despite formatting"
+    },
+    {
+      "settlement_id": "setl_100015RP",
+      "matched_entry_id": "LDG00016",
+      "tier": "fuzzy",
+      "confidence": 0.84,
+      "reason": "Amount within 0p, date within 3d"
+    },
+    {
+      "settlement_id": "setl_100018RP",
+      "matched_entry_id": "LDG00019",
+      "tier": "fuzzy",
+      "confidence": 0.88,
+      "reason": "Amount within 0p, date within 1d"
+    },
+    {
+      "settlement_id": "setl_100020RP",
+      "matched_entry_id": "LDG00021",
+      "tier": "fuzzy",
+      "confidence": 0.9,
+      "reason": "Amount within 446p, date within 0d"
+    }
+  ],
+  "exceptions": [
+    {
+      "source": "bank_reconciliation",
+      "exception_type": "duplicate_posting",
+      "reference_id": "setl_100001RP",
+      "matched_entry_id": "LDG00001",
+      "amount_paise": 1798572,
+      "detail": "Possible duplicate bank posting -- ['LDG00002'] has an identical unused credit of 1798572p with the same narration. Recommend manual verification that the bank did not credit this settlement twice.",
+      "recommended_action": "Action: Retrieve the bank statement for settlement\u202fsetl_100001RP, locate the two credit entries of \u20b917,985.72 (1798572\u202fpaise) with narrations matching LDG00001 and LDG00002, compare their UTR/reference numbers and timestamps to confirm a duplicate posting, and if confirmed, initiate a reversal for the erroneous entry."
+    },
+    {
+      "source": "bank_reconciliation",
+      "exception_type": "unresolved_settlement",
+      "reference_id": "setl_100007RP",
+      "amount_paise": 1437847,
+      "detail": "LLM proposed a match to LDG00002 (confidence 0.75), but it was REJECTED by the deterministic guardrail: amount gap of 25.1% exceeds the 5.0% sanity threshold. Original LLM reasoning: Narration contains 'RAZORPAY' and 'SETTLEMENT' with a reference starting 20260000 matching the UTR prefix, and the date (2026-07-06) is within a few days of the settlement date; amount differs by ~\u20b93,607, plausible as fees or rounding.",
+      "recommended_action": "Action: Retrieve the bank entry with UTR prefix\u202f20260000 dated\u202f2026\u201107\u201106, verify its credited amount against the \u20b91,437,847 (\u20b914,378.47) settlement amount for setl_100007RP, then pull the Razorpay settlement details for that reference and compare the summed order amounts to identify the \u20b93,607 variance as fees before confirming or rejecting the match to LDG00002."
+    },
+    {
+      "source": "db_reconciliation",
+      "exception_type": "phantom_charge",
+      "reference_id": "order_300034RP",
+      "amount_paise": 630629,
+      "detail": "Order order_300034RP is 'failed' in the internal DB, but Razorpay shows this order as paid and it was settled to the bank. Customer was charged 6306.29 rupees; likely unfulfilled.",
+      "recommended_action": "Action: Open a Razorpay support ticket citing order_300034RP, the \u20b96,306.29 (630,629\u202fpaise) charge, and the internal DB \u201cfailed\u201d status, and request a refund or reversal of the settled amount."
+    },
+    {
+      "source": "db_reconciliation",
+      "exception_type": "phantom_charge",
+      "reference_id": "order_300020RP",
+      "amount_paise": 462007,
+      "detail": "Order order_300020RP is 'pending' in the internal DB, but Razorpay shows this order as paid and it was settled to the bank. Customer was charged 4620.07 rupees; likely unfulfilled.",
+      "recommended_action": "Action: Retrieve the Razorpay payment/UTR details for order_300020RP, verify that the \u20b94,620.07 charge was not fulfilled, and if confirmed, initiate a full refund of 462007\u202fpaise to the customer and update the internal DB status to \u201crefunded.\u201d"
+    },
+    {
+      "source": "db_reconciliation",
+      "exception_type": "phantom_charge",
+      "reference_id": "order_300019RP",
+      "amount_paise": 334555,
+      "detail": "Order order_300019RP is 'failed' in the internal DB, but Razorpay shows this order as paid and it was settled to the bank. Customer was charged 3345.55 rupees; likely unfulfilled.",
+      "recommended_action": "Action: Retrieve the Razorpay transaction details for order_300019RP (\u20b93,345.55), verify the payment was settled, and immediately process a full refund to the customer while updating the internal DB status to \u201crefunded.\u201d"
+    },
+    {
+      "source": "db_reconciliation",
+      "exception_type": "ghost_order",
+      "reference_id": "order_GHOST900000RP",
+      "amount_paise": 275040,
+      "detail": "Order order_GHOST900000RP is marked 'completed' in the internal DB but has no matching Razorpay payment anywhere. Possible data-entry error or revenue leakage of 2750.40 rupees.",
+      "recommended_action": "Action: Search the Razorpay dashboard and transaction logs for any payment of 2,750.40\u202f\u20b9 (275,040\u202fpaise) associated with order_GHOST900000RP, and if none is found, open a support ticket with Razorpay citing order_GHOST900000RP and the missing amount."
+    },
+    {
+      "source": "db_reconciliation",
+      "exception_type": "ghost_order",
+      "reference_id": "order_GHOST900001RP",
+      "amount_paise": 206150,
+      "detail": "Order order_GHOST900001RP is marked 'completed' in the internal DB but has no matching Razorpay payment anywhere. Possible data-entry error or revenue leakage of 2061.50 rupees.",
+      "recommended_action": "Action: Open a support ticket with Razorpay citing order_GHOST900001RP and the \u20b92,061.50 (206,150\u202fpaise) amount to verify whether a payment was captured under a different identifier and review internal entry logs for possible manual entry errors."
+    }
+  ]
+}

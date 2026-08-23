@@ -28,6 +28,11 @@ from datetime import date, timedelta
 
 random.seed(7)
 
+import os
+OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "generated")
+os.makedirs(OUT_DIR, exist_ok=True)
+os.chdir(OUT_DIR)
+
 START_DATE = date(2026, 7, 1)
 N_BATCHES = 20          # settlement batches (settlement_id groups)
 N_UNRELATED_LEDGER = 8  # non-Razorpay bank lines mixed into the statement
@@ -45,7 +50,8 @@ def payment_id(i):
     return f"pay_{200000+i:06d}RP"
 
 def utr(i):
-    return f"{2026000000 + i*13 + random.randint(1,9)}vxp0rj"
+    suffix = ''.join(random.choices('abcdefghijklmnopqrstuvwxyz0123456789', k=6))
+    return f"{2026000000 + i*13 + random.randint(1,9)}{suffix}"
 
 rows_settlement = []
 rows_ledger = []
@@ -207,14 +213,14 @@ def write_csv(path, rows, fieldnames):
         w.writeheader()
         w.writerows(rows)
 
-write_csv("/home/claude/settlement_report.csv", rows_settlement,
+write_csv("settlement_report.csv", rows_settlement,
     ["entity_id","type","order_id","amount","fee","tax","settled_amount","settlement_id","settlement_utr","settled_at"])
-write_csv("/home/claude/bank_ledger.csv", rows_ledger,
+write_csv("bank_ledger.csv", rows_ledger,
     ["entry_id","date","narration","debit","credit"])
-write_csv("/home/claude/ground_truth.csv", rows_batch_truth,
+write_csv("ground_truth.csv", rows_batch_truth,
     ["settlement_id","settlement_utr","n_payments_in_batch","payment_ids","batch_settled_total_paise",
      "matching_ledger_entry_id","expected_match_type","noise_type","notes"])
-write_csv("/home/claude/ledger_ground_truth.csv", rows_ledger_truth,
+write_csv("ledger_ground_truth.csv", rows_ledger_truth,
     ["entry_id","expected_match_type","notes"])
 
 # ============================================================
@@ -275,9 +281,9 @@ for k in range(n_ghost_orders):
 
 random.shuffle(rows_orders)
 
-write_csv("/home/claude/orders_db.csv", rows_orders,
+write_csv("orders_db.csv", rows_orders,
     ["order_id","customer_email","gross_amount","payment_method","order_status","created_at"])
-write_csv("/home/claude/order_ground_truth.csv", rows_order_truth,
+write_csv("order_ground_truth.csv", rows_order_truth,
     ["order_id","exception_type","notes"])
 
 print(f"orders_db.csv           : {len(rows_orders)} rows ({n_phantom} phantom-charge, {n_ghost_orders} ghost-order cases)")
