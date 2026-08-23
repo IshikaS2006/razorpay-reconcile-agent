@@ -34,6 +34,7 @@ from matching.matching_engine import (
     flag_duplicate_warnings, extract_utr_candidates, AMOUNT_TOLERANCE_PAISE
 )
 from matching.db_reconciliation import load_orders, db_vs_razorpay_check
+from matching.tax_verification import verify_tax_lines
 
 LLM_AVAILABLE = bool(os.environ.get("GROQ_API_KEY"))
 if LLM_AVAILABLE:
@@ -161,6 +162,19 @@ def run_pipeline(base=None):
             "exception_type": e["exception_type"],
             "reference_id": e["order_id"],
             "amount_paise": e["severity_paise"],
+            "detail": e["detail"],
+            "recommended_action": None,
+        })
+
+        # --- Tax-line / MDR-GST verification ---
+    
+    tax_exceptions = verify_tax_lines(settlement)
+    for e in tax_exceptions:
+        exceptions.append({
+            "source": "tax_verification",
+            "exception_type": e["exception_type"],
+            "reference_id": e["entity_id"],
+            "amount_paise": e["amount_paise"],
             "detail": e["detail"],
             "recommended_action": None,
         })
