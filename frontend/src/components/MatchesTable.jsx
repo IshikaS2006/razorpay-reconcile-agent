@@ -1,0 +1,7 @@
+import { useState } from 'react'
+
+function MatchesTable({ matches }) {
+  return <section className="matches-section"><div className="section-heading"><div><p className="eyebrow">Bank-side reconciliation</p><h2>Matches</h2></div><span className="section-count">{matches.length} matched</span></div>{matches.length ? <div className="table-wrap"><table><thead><tr><th>Settlement ID</th><th>Ledger entry</th><th>Tier</th><th>Confidence</th><th>Reason</th></tr></thead><tbody>{matches.map((match, index) => <MatchRow key={`${match.settlement_id}-${index}`} match={match} />)}</tbody></table></div> : <div className="inline-empty">No matches recorded for this run.</div>}</section>
+}
+function MatchRow({ match }) { const [expanded, setExpanded] = useState(false); const reason = match.reason || 'No reasoning provided.'; return <tr><td className="mono">{match.settlement_id}</td><td className="mono">{match.matched_entry_id}</td><td><span className={`tier-badge tier-${match.tier}`}>{match.tier}</span></td><td>{match.confidence == null ? '—' : `${(match.confidence * 100).toFixed(0)}%`}</td><td className="reason-cell"><span className={expanded ? '' : 'reason-truncated'}>{reason}</span>{reason.length > 92 && <button type="button" className="text-button" onClick={() => setExpanded((value) => !value)}>{expanded ? 'Show less' : 'Show more'}</button>}</td></tr> }
+export default MatchesTable

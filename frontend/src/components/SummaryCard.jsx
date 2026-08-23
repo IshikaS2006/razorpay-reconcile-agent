@@ -1,0 +1,6 @@
+function SummaryCard({ summary }) {
+  const matchRate = Number(summary?.match_rate_pct ?? 0)
+  return <section className="summary-card" aria-label="Run summary"><div className="match-rate"><div className="rate-ring" style={{ '--rate': `${Math.min(Math.max(matchRate, 0), 100) * 3.6}deg` }}><div><strong>{matchRate.toFixed(1)}%</strong><span>match rate</span></div></div></div><div className="summary-stats"><SummaryStat label="Settlement batches" value={summary?.total_settlement_batches ?? 0} /><SummaryStat label="Matched batches" value={summary?.matched_batches ?? 0} /><SummaryStat label="Total exceptions" value={summary?.total_exceptions ?? 0} emphasis /><div className="llm-stat"><span>LLM reasoning</span><strong className={summary?.llm_available ? 'status-on' : 'status-off'}>{summary?.llm_available ? 'Available' : 'Unavailable'}</strong></div></div></section>
+}
+function SummaryStat({ label, value, emphasis }) { return <div className="summary-stat"><strong className={emphasis ? 'stat-emphasis' : ''}>{value}</strong><span>{label}</span></div> }
+export default SummaryCard
