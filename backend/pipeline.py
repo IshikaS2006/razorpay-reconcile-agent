@@ -93,7 +93,13 @@ def run_pipeline(base=None):
                     amount_gap_pct = abs(matched_row["credit"] - b["batch_total"]) / b["batch_total"] * 100
 
                 GUARDRAIL_MAX_GAP_PCT = 5.0
-                if matched_row is not None and amount_gap_pct <= GUARDRAIL_MAX_GAP_PCT:
+                narration_has_evidence = False
+                if matched_row is not None:
+                    narr = str(matched_row.get("narration", "")).upper()
+                    utr_fragment = b["settlement_utr"][-6:].upper()  # the random suffix, not the predictable prefix
+                    narration_has_evidence = utr_fragment in narr  # must match THIS settlement's UTR specifically, not just any Razorpay-looking text
+
+                if matched_row is not None and amount_gap_pct <= GUARDRAIL_MAX_GAP_PCT and narration_has_evidence:
                     bank_matches.append({
                         "settlement_id": b["settlement_id"],
                         "matched_entry_id": verdict["entry_id"],
@@ -105,8 +111,8 @@ def run_pipeline(base=None):
                 else:
                     verdict["reasoning"] = (
                         f"LLM proposed a match to {verdict['entry_id']} (confidence {verdict.get('confidence')}), "
-                        f"but it was REJECTED by the deterministic guardrail: amount gap of "
-                        f"{amount_gap_pct:.1f}% exceeds the {GUARDRAIL_MAX_GAP_PCT}% sanity threshold. "
+                        f"but it was REJECTED by the deterministic guardrail: amount gap "
+                        f"{amount_gap_pct:.1f}% / narration evidence found = {narration_has_evidence}. "
                         f"Original LLM reasoning: {verdict.get('reasoning')}"
                     )
         exceptions.append({

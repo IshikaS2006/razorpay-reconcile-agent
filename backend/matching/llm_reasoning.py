@@ -63,6 +63,15 @@ def resolve_ambiguous_batch(batch: dict, candidate_ledger_rows: list) -> dict:
     transaction, accounting for real-world noise (extra bank fees, rounding,
     partial refunds, reformatted reference numbers, minor date shifts).
 
+    CRITICAL RULE: A match requires genuine textual evidence connecting the
+    narration to Razorpay or this specific settlement's UTR (e.g. the word
+    'RAZORPAY', a recognizable fragment of the UTR, or an explicit settlement
+    reference). Amount and date proximity ALONE, without such textual evidence,
+    is NOT sufficient grounds for a match -- many completely unrelated bank
+    transactions (salary, utility autopay, vendor payments) can coincidentally
+    have similar amounts. If the narration gives no Razorpay-related evidence
+    at all, you must report match: false, regardless of how close the amount is.
+
     SETTLEMENT BATCH:
     settlement_id: {batch['settlement_id']}
     UTR: {batch['settlement_utr']}
@@ -111,12 +120,20 @@ def draft_action_recommendation(exception: dict) -> str:
 
     Respond with ONLY the recommended action, as a single sentence starting with "Action:". No other text."""
 
-    resp = client.chat.completions.create(
-        model=MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.2,
-    )
-    return resp.choices[0].message.content.strip()
+    import time
+    last_error = None
+    for attempt in range(3):
+        try:
+            resp = client.chat.completions.create(
+                model=MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.2,
+            )
+            return resp.choices[0].message.content.strip()
+        except Exception as e:
+            last_error = e
+            time.sleep(1.5 * (attempt + 1))  # brief backoff before retrying
+    raise last_error
 
 
 if __name__ == "__main__":
