@@ -1,0 +1,6 @@
+order_id,exception_type,notes
+order_300012RP,phantom_charge,"Order order_300012RP shows 'failed' in the internal DB, but Razorpay captured this payment and it was settled to the bank. Customer was charged; order likely never fulfilled (webhook drop)."
+order_300030RP,phantom_charge,"Order order_300030RP shows 'pending' in the internal DB, but Razorpay captured this payment and it was settled to the bank. Customer was charged; order likely never fulfilled (webhook drop)."
+order_300048RP,phantom_charge,"Order order_300048RP shows 'failed' in the internal DB, but Razorpay captured this payment and it was settled to the bank. Customer was charged; order likely never fulfilled (webhook drop)."
+order_GHOST900000RP,ghost_order,Order order_GHOST900000RP is marked 'completed' in the internal DB with no corresponding Razorpay payment anywhere. Possible data-entry error or revenue leakage -- product may have shipped with no payment collected.
+order_GHOST900001RP,ghost_order,Order order_GHOST900001RP is marked 'completed' in the internal DB with no corresponding Razorpay payment anywhere. Possible data-entry error or revenue leakage -- product may have shipped with no payment collected.

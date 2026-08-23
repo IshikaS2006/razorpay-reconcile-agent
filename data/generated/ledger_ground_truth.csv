@@ -1,0 +1,9 @@
+entry_id,expected_match_type,notes
+LDG00022,ignore_not_razorpay,"Unrelated bank transaction (SALARY CREDIT-ACME PAYROLL) -- correctly ignored, not a false exception"
+LDG00023,ignore_not_razorpay,"Unrelated bank transaction (AUTOPAY-ELECTRICITY BOARD) -- correctly ignored, not a false exception"
+LDG00024,ignore_not_razorpay,"Unrelated bank transaction (UPI-VENDOR PAYMENT-9876543210) -- correctly ignored, not a false exception"
+LDG00025,ignore_not_razorpay,"Unrelated bank transaction (ATM WDL-MG ROAD BRANCH) -- correctly ignored, not a false exception"
+LDG00026,ignore_not_razorpay,"Unrelated bank transaction (GST PAYMENT-CHALLAN) -- correctly ignored, not a false exception"
+LDG00027,ignore_not_razorpay,"Unrelated bank transaction (RTGS CR-VENDOR REFUND) -- correctly ignored, not a false exception"
+LDG00028,ignore_not_razorpay,"Unrelated bank transaction (CREDIT CARD BILL PAYMENT) -- correctly ignored, not a false exception"
+LDG00029,ignore_not_razorpay,"Unrelated bank transaction (FD INTEREST CREDIT) -- correctly ignored, not a false exception"

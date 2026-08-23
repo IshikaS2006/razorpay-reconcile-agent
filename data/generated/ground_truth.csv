@@ -1,0 +1,21 @@
+settlement_id,settlement_utr,n_payments_in_batch,payment_ids,batch_settled_total_paise,matching_ledger_entry_id,expected_match_type,noise_type,notes
+setl_100001RP,2026000020vxp0rj,6,pay_200001RP;pay_200002RP;pay_200003RP;pay_200004RP;pay_200005RP;pay_200006RP,2582737,LDG00001|LDG00002,exception,duplicate_entry,Duplicate ledger credit for the same settlement UTR -- needs human review
+setl_100002RP,2026000027vxp0rj,5,pay_200007RP;pay_200008RP;pay_200009RP;pay_200010RP;pay_200011RP,2103445,LDG00003,fuzzy,partial_refund,Partial refund of 377459 paise reduced the credited amount
+setl_100003RP,2026000042vxp0rj,6,pay_200012RP;pay_200013RP;pay_200014RP;pay_200015RP;pay_200016RP;pay_200017RP,2065584,LDG00004,fuzzy,fee_deduction,Additional bank charge of 1467 paise beyond Razorpay's own fee
+setl_100004RP,2026000061vxp0rj,5,pay_200018RP;pay_200019RP;pay_200020RP;pay_200021RP;pay_200022RP,1904757,LDG00005,fuzzy,reference_mismatch,UTR present but reformatted inside a generic bank narration string
+setl_100005RP,2026000067vxp0rj,3,pay_200023RP;pay_200024RP;pay_200025RP,1757398,LDG00006,exact,clean_exact,3 payments bundled into one clean settlement credit
+setl_100006RP,2026000080vxp0rj,4,pay_200026RP;pay_200027RP;pay_200028RP;pay_200029RP,1338677,LDG00007,exact,clean_exact,4 payments bundled into one clean settlement credit
+setl_100007RP,2026000092vxp0rj,5,pay_200030RP;pay_200031RP;pay_200032RP;pay_200033RP;pay_200034RP,2856176,,exception,missing_in_ledger,Settlement batch exists in Razorpay report but bank has not posted the credit yet
+setl_100008RP,2026000112vxp0rj,4,pay_200035RP;pay_200036RP;pay_200037RP;pay_200038RP,2501983,LDG00009,exact,clean_exact,4 payments bundled into one clean settlement credit
+setl_100009RP,2026000118vxp0rj,2,pay_200039RP;pay_200040RP,938387,LDG00010,fuzzy,date_lag,Ledger posted 3 day(s) after settlement date
+setl_100010RP,2026000135vxp0rj,5,pay_200041RP;pay_200042RP;pay_200043RP;pay_200044RP;pay_200045RP,2891381,LDG00011,exact,clean_exact,5 payments bundled into one clean settlement credit
+setl_100011RP,2026000151vxp0rj,2,pay_200046RP;pay_200047RP,757747,LDG00012,fuzzy,fee_deduction,Additional bank charge of 464 paise beyond Razorpay's own fee
+setl_100012RP,2026000163vxp0rj,5,pay_200048RP;pay_200049RP;pay_200050RP;pay_200051RP;pay_200052RP,2056084,LDG00013,exact,clean_exact,5 payments bundled into one clean settlement credit
+setl_100013RP,2026000178vxp0rj,5,pay_200053RP;pay_200054RP;pay_200055RP;pay_200056RP;pay_200057RP,2593349,LDG00014,fuzzy,partial_refund,Partial refund of 486849 paise reduced the credited amount
+setl_100014RP,2026000186vxp0rj,3,pay_200058RP;pay_200059RP;pay_200060RP,1357275,LDG00015,exact,clean_exact,3 payments bundled into one clean settlement credit
+setl_100015RP,2026000200vxp0rj,4,pay_200061RP;pay_200062RP;pay_200063RP;pay_200064RP,1265365,LDG00016,fuzzy,date_lag,Ledger posted 1 day(s) after settlement date
+setl_100016RP,2026000209vxp0rj,6,pay_200065RP;pay_200066RP;pay_200067RP;pay_200068RP;pay_200069RP;pay_200070RP,3487653,LDG00017,exact,clean_exact,6 payments bundled into one clean settlement credit
+setl_100017RP,2026000229vxp0rj,2,pay_200071RP;pay_200072RP,647247,LDG00018,exact,clean_exact,2 payments bundled into one clean settlement credit
+setl_100018RP,2026000242vxp0rj,3,pay_200073RP;pay_200074RP;pay_200075RP,556549,LDG00019,fuzzy,date_lag,Ledger posted 1 day(s) after settlement date
+setl_100019RP,2026000256vxp0rj,3,pay_200076RP;pay_200077RP;pay_200078RP,502118,LDG00020,exact,clean_exact,3 payments bundled into one clean settlement credit
+setl_100020RP,2026000267vxp0rj,6,pay_200079RP;pay_200080RP;pay_200081RP;pay_200082RP;pay_200083RP;pay_200084RP,1937112,LDG00021,fuzzy,fee_deduction,Additional bank charge of 1154 paise beyond Razorpay's own fee
