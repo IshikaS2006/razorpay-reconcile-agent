@@ -1,8 +1,9 @@
 """
 Saves a pipeline_output.json-shaped result dict into Postgres.
+Also handles saving investigation results from the exception_investigator module.
 """
 from datetime import datetime
-from models import BatchRun, Match, Exception_
+from models import BatchRun, Match, Exception_, Investigation
 
 
 def save_run(db, result: dict) -> int:
@@ -47,3 +48,30 @@ def save_run(db, result: dict) -> int:
 
     db.commit()
     return run.id
+
+
+def save_investigations(db, run_id: int, investigations: list) -> int:
+    """
+    Save investigation results to the investigations table.
+    
+    Args:
+        db: SQLAlchemy session
+        run_id: The batch run ID
+        investigations: List of dicts from exception_investigator.investigate_run_exceptions()
+    
+    Returns: Count of saved investigations
+    """
+    for inv in investigations:
+        db.add(Investigation(
+            run_id=run_id,
+            exception_reference_id=inv.get("exception_reference_id"),
+            status=inv.get("status"),
+            explanation=inv.get("explanation"),
+            confidence=inv.get("confidence"),
+            evidence_used=inv.get("evidence_used"),
+            reasoning_chain=inv.get("reasoning_chain"),
+            investigated_at=datetime.now(),
+        ))
+    
+    db.commit()
+    return len(investigations)

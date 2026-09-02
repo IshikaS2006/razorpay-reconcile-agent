@@ -11,20 +11,28 @@ Reflects the REAL Razorpay mechanism (confirmed from Razorpay's own API docs):
     with Razorpay at all. A good agent must correctly IGNORE these, not
     force-match or flag them as exceptions.
 
-Files produced:
-  settlement_report.csv  -- one row per individual payment/refund (Razorpay side)
-  bank_ledger.csv         -- one row per bank statement line (bank side),
-                             mostly settlement credits, some unrelated noise
-  ground_truth.csv        -- one row per settlement BATCH (settlement_id),
-                             recording which ledger entry(ies) it should
-                             match to, and why (noise type)
-  ledger_ground_truth.csv -- one row per ledger entry that is NOT a
-                             Razorpay settlement at all (orphan/unrelated)
+Files produced (5 total):
+  1. settlement_report.csv      -- one row per individual payment/refund (Razorpay side)
+  2. bank_ledger.csv            -- one row per bank statement line (bank side),
+                                   mostly settlement credits, some unrelated noise
+  3. ground_truth.csv           -- one row per settlement BATCH (settlement_id),
+                                   recording which ledger entry(ies) it should
+                                   match to, and why (noise type)
+  4. orders_db.csv              -- one row per order in the merchant's internal DB
+                                   (includes phantom-charge and ghost-order cases)
+  5. refund_dispute_log.csv     -- one row per customer dispute/refund/chargeback log,
+                                   correlated with problematic batches and phantom charges.
+                                   This is the investigator agent's lookup table.
+
+Ground truth CSVs (for evaluation):
+  - tax_ground_truth.csv        -- known fee/GST reporting anomalies (for tax verification)
+  - ledger_ground_truth.csv     -- ledger entries that are unrelated to Razorpay
+  - order_ground_truth.csv      -- known phantom-charge and ghost-order cases
 """
 
 import random
 import csv
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 random.seed(7)
 
@@ -336,7 +344,127 @@ write_csv("order_ground_truth.csv", rows_order_truth,
 print(f"orders_db.csv           : {len(rows_orders)} rows ({n_phantom} phantom-charge, {n_ghost_orders} ghost-order cases)")
 print(f"order_ground_truth.csv  : {len(rows_order_truth)} flagged DB-side exceptions")
 
-print(f"settlement_report.csv  : {len(rows_settlement)} payment rows across {N_BATCHES} batches")
+# ============================================================
+# FOURTH SOURCE: Refund & Dispute Log (refund_dispute_log.csv)
+# Merchant's internal log of customer disputes, chargebacks, and refund requests.
+# Correlates with problematic batches (partial refund, reference mismatch) and
+# phantom charge orders. This is what an investigator agent will cross-reference
+# to understand WHY a settlement batch is unresolved.
+# ============================================================
+rows_dispute_log = []
+
+# Find partial_refund and reference_mismatch batches for correlation
+partial_refund_batches = [b for b in rows_batch_truth if b["noise_type"] == "partial_refund"]
+reference_mismatch_batches = [b for b in rows_batch_truth if b["noise_type"] == "reference_mismatch"]
+missing_ledger_batches = [b for b in rows_batch_truth if b["noise_type"] == "missing_in_ledger"]
+
+dispute_log_counter = 1
+
+# --- Refund disputes linked to partial_refund batches ---
+for batch in partial_refund_batches:
+    # Extract one order from this batch (pick the first one from payment_ids)
+    payment_ids_str = batch["payment_ids"]
+    pay_ids = payment_ids_str.split(";")
+    if pay_ids:
+        sample_pay_id = pay_ids[0]
+        # Find corresponding order_id in settlement_report
+        matching_settlement = next((s for s in rows_settlement if s["entity_id"] == sample_pay_id), None)
+        if matching_settlement:
+            order_id = matching_settlement["order_id"]
+            refund_amount = int(batch["batch_settled_total_paise"] * random.uniform(0.15, 0.35))
+            log_id = f"DISP{100000 + dispute_log_counter:06d}RP"
+            dispute_log_counter += 1
+            
+            rows_dispute_log.append({
+                "log_id": log_id,
+                "related_order_id": order_id,
+                "related_settlement_id": batch["settlement_id"],
+                "type": "refund",
+                "amount": refund_amount,
+                "status": random.choice(["completed", "initiated"]),
+                "created_at": (datetime.fromisoformat(matching_settlement["settled_at"]) + 
+                               timedelta(days=random.randint(1, 5))).isoformat(),
+                "notes": f"Customer requested refund for partial order; amount {refund_amount}p acknowledged.",
+            })
+
+# --- Chargeback/Dispute disputes linked to reference_mismatch batches ---
+for batch in reference_mismatch_batches:
+    payment_ids_str = batch["payment_ids"]
+    pay_ids = payment_ids_str.split(";")
+    if pay_ids:
+        sample_pay_id = pay_ids[0]
+        matching_settlement = next((s for s in rows_settlement if s["entity_id"] == sample_pay_id), None)
+        if matching_settlement:
+            order_id = matching_settlement["order_id"]
+            log_id = f"DISP{100000 + dispute_log_counter:06d}RP"
+            dispute_log_counter += 1
+            
+            rows_dispute_log.append({
+                "log_id": log_id,
+                "related_order_id": order_id,
+                "related_settlement_id": batch["settlement_id"],
+                "type": random.choice(["dispute", "chargeback"]),
+                "amount": matching_settlement["amount"],
+                "status": random.choice(["initiated", "completed", "rejected"]),
+                "created_at": (datetime.fromisoformat(matching_settlement["settled_at"]) + 
+                               timedelta(days=random.randint(2, 8))).isoformat(),
+                "notes": f"Customer disputes transaction; reference formatting unclear on statement. Requires manual review.",
+            })
+
+# --- Phantom charge disputes (customer complains they were charged but order shows failed/pending) ---
+for phantom_order_id in phantom_order_ids:
+    matching_settlement = next((s for s in rows_settlement if s["order_id"] == phantom_order_id), None)
+    if matching_settlement:
+        log_id = f"DISP{100000 + dispute_log_counter:06d}RP"
+        dispute_log_counter += 1
+        
+        rows_dispute_log.append({
+            "log_id": log_id,
+            "related_order_id": phantom_order_id,
+            "related_settlement_id": matching_settlement["settlement_id"],
+            "type": "chargeback",
+            "amount": matching_settlement["amount"],
+            "status": random.choice(["completed", "rejected"]),
+            "created_at": (datetime.fromisoformat(matching_settlement["settled_at"]) + 
+                           timedelta(days=random.randint(3, 14))).isoformat(),
+            "notes": f"Customer initiated chargeback; claims order was never fulfilled despite being charged.",
+        })
+
+# --- Missing-from-ledger batch edge case (settlement exists but hasn't posted to bank yet) ---
+# Represent this as a "payment_pending" or "settlement_queued" type dispute
+for batch in missing_ledger_batches:
+    payment_ids_str = batch["payment_ids"]
+    pay_ids = payment_ids_str.split(";")
+    if pay_ids:
+        sample_pay_id = pay_ids[0]
+        matching_settlement = next((s for s in rows_settlement if s["entity_id"] == sample_pay_id), None)
+        if matching_settlement and len(rows_dispute_log) < 8:  # Keep it to max 8 rows total
+            order_id = matching_settlement["order_id"]
+            log_id = f"DISP{100000 + dispute_log_counter:06d}RP"
+            dispute_log_counter += 1
+            
+            rows_dispute_log.append({
+                "log_id": log_id,
+                "related_order_id": order_id,
+                "related_settlement_id": batch["settlement_id"],
+                "type": "refund",
+                "amount": matching_settlement["settled_amount"],
+                "status": "initiated",
+                "created_at": datetime.fromisoformat(matching_settlement["settled_at"]).isoformat(),
+                "notes": f"Settlement initiated but payment has not cleared to bank yet. Awaiting ledger post.",
+            })
+
+# Keep dispute log to 6-8 entries as specified
+rows_dispute_log = rows_dispute_log[:8]
+
+write_csv("refund_dispute_log.csv", rows_dispute_log,
+    ["log_id","related_order_id","related_settlement_id","type","amount","status","created_at","notes"])
+
+print(f"refund_dispute_log.csv  : {len(rows_dispute_log)} rows (correlated with partial refunds, reference mismatches, phantom charges)")
+print(f"\nAll 5 synthetic CSVs generated successfully in: {os.getcwd()}")
+
+print(f"\nsettlement_report.csv  : {len(rows_settlement)} payment rows across {N_BATCHES} batches")
 print(f"bank_ledger.csv        : {len(rows_ledger)} rows ({N_UNRELATED_LEDGER} unrelated)")
+print(f"orders_db.csv          : {len(rows_orders)} rows ({n_phantom} phantom, {n_ghost_orders} ghost)")
 print(f"ground_truth.csv       : {len(rows_batch_truth)} settlement batches")
 print(f"ledger_ground_truth.csv: {len(rows_ledger_truth)} unrelated ledger lines")

@@ -1,6 +1,7 @@
 """
-SQLAlchemy models -- three tables: batch_runs, matches, exceptions.
+SQLAlchemy models -- four tables: batch_runs, matches, exceptions, investigations.
 Each pipeline run creates one batch_run row, plus its matches and exceptions.
+Each exception can have zero or more investigation results (audit trail).
 """
 from sqlalchemy import Column, Integer, String, Float, BigInteger, Text, Boolean, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
@@ -22,6 +23,7 @@ class BatchRun(Base):
 
     matches = relationship("Match", back_populates="run", cascade="all, delete-orphan")
     exceptions = relationship("Exception_", back_populates="run", cascade="all, delete-orphan")
+    investigations = relationship("Investigation", back_populates="run", cascade="all, delete-orphan")
 
 
 class Match(Base):
@@ -51,3 +53,19 @@ class Exception_(Base):
     recommended_action = Column(Text)
 
     run = relationship("BatchRun", back_populates="exceptions")
+
+
+class Investigation(Base):
+    __tablename__ = "investigations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    run_id = Column(Integer, ForeignKey("batch_runs.id"))
+    exception_reference_id = Column(String)  # reference to Exception_.reference_id
+    status = Column(String)  # "explained" (confidence >= 0.7) or "escalated" (confidence < 0.7)
+    explanation = Column(Text)  # plain-language explanation from LLM
+    confidence = Column(Float)  # 0-1 score
+    evidence_used = Column(Text)  # JSON array of dispute log IDs found, or empty string
+    reasoning_chain = Column(Text)  # full LLM reasoning for audit trail
+    investigated_at = Column(DateTime, default=datetime.utcnow)
+
+    run = relationship("BatchRun", back_populates="investigations")

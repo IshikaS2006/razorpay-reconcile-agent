@@ -53,7 +53,13 @@ def resolve_ambiguous_batch(batch: dict, candidate_ledger_rows: list) -> dict:
     candidate_ledger_rows: list of {"entry_id", "date", "narration", "credit"} --
         the leftover, still-unmatched ledger rows to consider.
 
-    Returns: {"match": bool, "entry_id": str|None, "confidence": float, "reasoning": str}
+    Returns: {
+        "match": bool,
+        "entry_id": str|None,
+        "confidence": float,
+        "reasoning": str,
+        "action": str
+    }
     """
     client = _client()
 
@@ -81,12 +87,18 @@ def resolve_ambiguous_batch(batch: dict, candidate_ledger_rows: list) -> dict:
     CANDIDATE LEDGER ENTRIES (unmatched so far):
     {json.dumps(candidate_ledger_rows, indent=2, default=str)}
 
+    Also draft a concrete "Action:" line — the specific next step a human
+    should take (e.g. "verify UTR X with bank, initiate reversal if duplicate
+    confirmed"). Not a generic recommendation — name the specific ID and the
+    specific check.
+
     Respond ONLY with a JSON object, no other text:
     {{
     "match": true or false,
     "entry_id": "the matching entry_id, or null if no plausible match",
     "confidence": a number between 0 and 1,
-    "reasoning": "one or two sentences citing the SPECIFIC evidence (numbers, UTR fragments, dates) that led to this conclusion"
+    "reasoning": "one or two sentences citing the SPECIFIC evidence (numbers, UTR fragments, dates) that led to this conclusion",
+    "action": "Action: the specific next step a human should take, naming the specific ID and specific check"
     }}"""
 
     resp = client.chat.completions.create(
@@ -96,7 +108,6 @@ def resolve_ambiguous_batch(batch: dict, candidate_ledger_rows: list) -> dict:
         temperature=0.1,
     )
     return json.loads(resp.choices[0].message.content)
-
 
 def draft_action_recommendation(exception: dict) -> str:
     """

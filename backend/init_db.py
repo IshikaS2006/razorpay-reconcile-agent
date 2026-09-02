@@ -7,4 +7,4 @@ import models  # noqa: F401 -- imported so its tables register with Base
 
 if __name__ == "__main__":
     Base.metadata.create_all(bind=engine)
-    print("Tables created successfully: batch_runs, matches, exceptions")
+    print("Tables created successfully: batch_runs, matches, exceptions, investigations")

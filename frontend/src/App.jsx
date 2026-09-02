@@ -4,6 +4,7 @@ import './App.css'
 import SummaryCard from './components/SummaryCard'
 import MatchesTable from './components/MatchesTable'
 import ExceptionCard from './components/ExceptionCard'
+import QueryBox from './components/QueryBox'
 
 const API_URL = 'http://127.0.0.1:8000'
 
@@ -74,6 +75,7 @@ function App() {
           <SummaryCard summary={run.summary} />
           <MatchesTable matches={run.matches ?? []} />
           <section className="exceptions-section"><div className="section-heading"><div><p className="eyebrow">Review queue</p><h2>Exceptions</h2></div><span className="section-count">{exceptions.length} total</span></div><ExceptionGroup title="Bank Reconciliation" items={bankExceptions} /><ExceptionGroup title="Internal Order DB Reconciliation" items={dbExceptions} /></section>
+          <QueryBox runId={run.summary?.run_id} />
         </> : <div className="state-panel empty-state"><div className="empty-icon">+</div><h2>No reconciliation runs yet</h2><p>Run your first reconciliation to see settlement matches and exceptions here.</p><button className="secondary-button" type="button" onClick={runReconciliation}>Run reconciliation</button></div>}
       </main>
     </div>

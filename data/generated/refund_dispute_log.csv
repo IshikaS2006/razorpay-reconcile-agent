@@ -1,0 +1,8 @@
+log_id,related_order_id,related_settlement_id,type,amount,status,created_at,notes
+DISP100001RP,order_300008RP,setl_100002RP,refund,601697,initiated,2026-08-08T00:00:00,Customer requested refund for partial order; amount 601697p acknowledged.
+DISP100002RP,order_300047RP,setl_100013RP,refund,639216,completed,2026-07-03T00:00:00,Customer requested refund for partial order; amount 639216p acknowledged.
+DISP100003RP,order_300018RP,setl_100004RP,chargeback,325806,rejected,2026-07-18T00:00:00,Customer disputes transaction; reference formatting unclear on statement. Requires manual review.
+DISP100004RP,order_300030RP,setl_100007RP,chargeback,230654,completed,2026-07-22T00:00:00,Customer initiated chargeback; claims order was never fulfilled despite being charged.
+DISP100005RP,order_300022RP,setl_100005RP,chargeback,277498,completed,2026-07-18T00:00:00,Customer initiated chargeback; claims order was never fulfilled despite being charged.
+DISP100006RP,order_300057RP,setl_100015RP,chargeback,323732,completed,2026-08-12T00:00:00,Customer initiated chargeback; claims order was never fulfilled despite being charged.
+DISP100007RP,order_300028RP,setl_100007RP,refund,606496,initiated,2026-07-11T00:00:00,Settlement initiated but payment has not cleared to bank yet. Awaiting ledger post.

@@ -2,19 +2,24 @@
 FastAPI backend -- serves the reconciliation pipeline as a real API.
 
 Endpoints:
-  POST /run           -- runs the pipeline fresh, saves to DB, returns summary
-  GET  /runs           -- list all past runs (id, timestamp, match rate)
-  GET  /runs/{run_id}  -- full detail: summary + matches + exceptions
-  GET  /runs/latest    -- convenience: full detail of the most recent run
+  POST /run                   -- runs the pipeline fresh, saves to DB, returns summary
+  GET  /runs                   -- list all past runs (id, timestamp, match rate)
+  GET  /runs/{run_id}          -- full detail: summary + matches + exceptions
+  GET  /runs/latest            -- convenience: full detail of the most recent run
+  POST /investigate/{run_id}   -- investigate exceptions using refund_dispute_log + LLM
+  POST /ask                    -- answer natural language questions about a run
 """
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from db import get_db
-from models import BatchRun, Match, Exception_
+from models import BatchRun, Match, Exception_, Investigation
 from pipeline import run_pipeline
-from db_writer import save_run
+from db_writer import save_run, save_investigations
+from exception_investigator import investigate_run_exceptions
+from qa_layer import answer_question
 
 app = FastAPI(title="Reconcile API")
 
@@ -48,6 +53,18 @@ def _exception_to_dict(e: Exception_):
     }
 
 
+def _investigation_to_dict(inv: Investigation):
+    return {
+        "exception_reference_id": inv.exception_reference_id,
+        "status": inv.status,
+        "explanation": inv.explanation,
+        "confidence": inv.confidence,
+        "evidence_used": inv.evidence_used,
+        "reasoning_chain": inv.reasoning_chain,
+        "investigated_at": inv.investigated_at.isoformat() if inv.investigated_at else None,
+    }
+
+
 def _run_to_summary_dict(r: BatchRun):
     return {
         "run_id": r.id,
@@ -59,6 +76,11 @@ def _run_to_summary_dict(r: BatchRun):
         "total_exceptions": r.total_exceptions,
         "db_side_exceptions": r.db_side_exceptions,
     }
+
+
+class QuestionRequest(BaseModel):
+    question: str
+    run_id: int
 
 
 @app.post("/run")
@@ -97,3 +119,92 @@ def get_run(run_id: int, db: Session = Depends(get_db)):
         "matches": [_match_to_dict(m) for m in run.matches],
         "exceptions": [_exception_to_dict(e) for e in run.exceptions],
     }
+
+
+@app.post("/investigate/{run_id}")
+def investigate_run(run_id: int, db: Session = Depends(get_db)):
+    """
+    Investigate all exceptions in a run using refund_dispute_log.csv + LLM.
+    
+    For each exception:
+    1. Cross-reference against refund_dispute_log.csv
+    2. Call LLM to explain the exception with evidence
+    3. Mark as "explained" (confidence >= 0.7) or "escalated" (confidence < 0.7)
+    4. Save results to investigations table (audit trail)
+    
+    Returns: list of investigation results
+    """
+    # Load the run and its exceptions
+    run = db.query(BatchRun).filter(BatchRun.id == run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    
+    if not run.exceptions:
+        return {
+            "run_id": run_id,
+            "investigations": [],
+            "message": "No exceptions to investigate in this run"
+        }
+    
+    # Convert exceptions to dicts for the investigator
+    exception_dicts = [_exception_to_dict(e) for e in run.exceptions]
+    # But we also need the internal fields, so use raw ORM objects' attributes
+    exception_dicts_full = [
+        {
+            "reference_id": e.reference_id,
+            "exception_type": e.exception_type,
+            "source": e.source,
+            "amount_paise": e.amount_paise,
+            "detail": e.detail,
+        }
+        for e in run.exceptions
+    ]
+    
+    # Run investigation
+    investigations = investigate_run_exceptions(
+        run_id=run_id,
+        exceptions=exception_dicts_full,
+        llm_available=run.llm_available,
+    )
+    
+    # Save investigations to DB
+    saved_count = save_investigations(db, run_id, investigations)
+    
+    # Fetch fresh from DB to return (ensures we return what was actually saved)
+    saved_investigations = db.query(Investigation).filter(
+        Investigation.run_id == run_id
+    ).all()
+    
+    return {
+        "run_id": run_id,
+        "investigations_count": saved_count,
+        "investigations": [_investigation_to_dict(inv) for inv in saved_investigations],
+    }
+
+
+@app.post("/ask")
+def ask_question(req: QuestionRequest, db: Session = Depends(get_db)):
+    """
+    Answer natural language questions about a reconciliation run.
+    
+    Request: {question: str, run_id: int}
+    Response: {answer: str, sources: [str]}
+    
+    The system:
+    1. Extracts entities (settlement_id, order_id, amounts) from the question
+    2. Queries matches, exceptions, investigations tables for the run
+    3. Passes question + retrieved data to LLM
+    4. LLM answers only from provided data, citing source IDs
+    
+    Example questions:
+      - "What happened to settlement setl_100002RP?"
+      - "Why was order_300008RP flagged as a phantom charge?"
+      - "How many exceptions are in this run?"
+      - "Tell me about exceptions with amount ₹5000"
+    """
+    result = answer_question(
+        question=req.question,
+        run_id=req.run_id,
+        db_session=db
+    )
+    return result
