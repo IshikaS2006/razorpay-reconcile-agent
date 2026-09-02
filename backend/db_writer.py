@@ -21,6 +21,9 @@ def save_run(db, result: dict) -> int:
         match_rate_pct=summary["match_rate_pct"],
         total_exceptions=summary["total_exceptions"],
         db_side_exceptions=summary["db_side_exceptions"],
+        records_processed=summary["records_processed"],
+        total_time_sec=summary["total_time_sec"],
+        records_per_sec=summary["records_per_sec"],
     )
     db.add(run)
     db.flush()  # assigns run.id without committing yet
@@ -29,6 +32,7 @@ def save_run(db, result: dict) -> int:
         db.add(Match(
             run_id=run.id,
             settlement_id=m.get("settlement_id"),
+            settled_amount=m.get("settled_amount"),
             matched_entry_id=m.get("matched_entry_id"),
             tier=m.get("tier"),
             confidence=m.get("confidence"),

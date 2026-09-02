@@ -60,6 +60,7 @@ def tier1_exact_match(batches: pd.DataFrame, ledger: pd.DataFrame):
             used_ledger_ids.add(found["entry_id"])
             matches.append({
                 "settlement_id": b["settlement_id"],
+                "settled_amount": int(b["batch_total"]),
                 "matched_entry_id": found["entry_id"],
                 "tier": "exact",
                 "confidence": 1.0,
@@ -112,6 +113,7 @@ def tier2_fuzzy_match(batches: pd.DataFrame, ledger: pd.DataFrame):
             used_ledger_ids.add(l["entry_id"])
             matches.append({
                 "settlement_id": b["settlement_id"],
+                "settled_amount": int(b["batch_total"]),
                 "matched_entry_id": l["entry_id"],
                 "tier": "fuzzy",
                 "confidence": round(best_score, 2),

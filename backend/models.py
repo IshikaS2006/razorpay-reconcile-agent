@@ -20,10 +20,14 @@ class BatchRun(Base):
     match_rate_pct = Column(Float)
     total_exceptions = Column(Integer)
     db_side_exceptions = Column(Integer)
+    records_processed = Column(Integer)
+    total_time_sec = Column(Float)
+    records_per_sec = Column(Float)
 
     matches = relationship("Match", back_populates="run", cascade="all, delete-orphan")
     exceptions = relationship("Exception_", back_populates="run", cascade="all, delete-orphan")
     investigations = relationship("Investigation", back_populates="run", cascade="all, delete-orphan")
+    gl_postings = relationship("GLPosting", back_populates="run", cascade="all, delete-orphan")
 
 
 class Match(Base):
@@ -32,10 +36,12 @@ class Match(Base):
     id = Column(Integer, primary_key=True, index=True)
     run_id = Column(Integer, ForeignKey("batch_runs.id"))
     settlement_id = Column(String)
+    settled_amount = Column(BigInteger)
     matched_entry_id = Column(String)
     tier = Column(String)
     confidence = Column(Float)
     reason = Column(Text)
+    status = Column(String)
 
     run = relationship("BatchRun", back_populates="matches")
 
@@ -51,6 +57,7 @@ class Exception_(Base):
     amount_paise = Column(BigInteger)
     detail = Column(Text)
     recommended_action = Column(Text)
+    status = Column(String)
 
     run = relationship("BatchRun", back_populates="exceptions")
 
@@ -67,5 +74,23 @@ class Investigation(Base):
     evidence_used = Column(Text)  # JSON array of dispute log IDs found, or empty string
     reasoning_chain = Column(Text)  # full LLM reasoning for audit trail
     investigated_at = Column(DateTime, default=datetime.utcnow)
+    resolved_at = Column(DateTime)
+    resolution_type = Column(String)
+    resolution_action = Column(Text)
 
     run = relationship("BatchRun", back_populates="investigations")
+
+
+class GLPosting(Base):
+    __tablename__ = "gl_postings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    run_id = Column(Integer, ForeignKey("batch_runs.id"))
+    entry_id = Column(String)
+    settlement_id = Column(String)
+    debit = Column(BigInteger)
+    credit = Column(BigInteger)
+    posted_at = Column(DateTime, default=datetime.utcnow)
+
+    # This is a simulated/mock posting for the demo, not a real ledger integration.
+    run = relationship("BatchRun", back_populates="gl_postings")

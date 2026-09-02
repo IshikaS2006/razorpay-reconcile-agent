@@ -20,6 +20,8 @@ from pipeline import run_pipeline
 from db_writer import save_run, save_investigations
 from exception_investigator import investigate_run_exceptions
 from qa_layer import answer_question
+from cash_forecaster import compute_cash_position
+from auto_resolver import auto_resolve_run
 
 app = FastAPI(title="Reconcile API")
 
@@ -35,10 +37,12 @@ app.add_middleware(
 def _match_to_dict(m: Match):
     return {
         "settlement_id": m.settlement_id,
+        "settled_amount": m.settled_amount,
         "matched_entry_id": m.matched_entry_id,
         "tier": m.tier,
         "confidence": m.confidence,
         "reason": m.reason,
+        "status": m.status,
     }
 
 
@@ -50,6 +54,7 @@ def _exception_to_dict(e: Exception_):
         "amount_paise": e.amount_paise,
         "detail": e.detail,
         "recommended_action": e.recommended_action,
+        "status": e.status,
     }
 
 
@@ -62,6 +67,9 @@ def _investigation_to_dict(inv: Investigation):
         "evidence_used": inv.evidence_used,
         "reasoning_chain": inv.reasoning_chain,
         "investigated_at": inv.investigated_at.isoformat() if inv.investigated_at else None,
+        "resolved_at": inv.resolved_at.isoformat() if inv.resolved_at else None,
+        "resolution_type": inv.resolution_type,
+        "resolution_action": inv.resolution_action,
     }
 
 
@@ -75,6 +83,9 @@ def _run_to_summary_dict(r: BatchRun):
         "match_rate_pct": r.match_rate_pct,
         "total_exceptions": r.total_exceptions,
         "db_side_exceptions": r.db_side_exceptions,
+        "records_processed": r.records_processed,
+        "total_time_sec": r.total_time_sec,
+        "records_per_sec": r.records_per_sec,
     }
 
 
@@ -87,8 +98,11 @@ class QuestionRequest(BaseModel):
 def trigger_run(db: Session = Depends(get_db)):
     result = run_pipeline()
     run_id = save_run(db, result)
+    resolution_summary = auto_resolve_run(run_id, db)
     run = db.query(BatchRun).filter(BatchRun.id == run_id).first()
-    return _run_to_summary_dict(run)
+    response = _run_to_summary_dict(run)
+    response["resolution_summary"] = resolution_summary
+    return response
 
 
 @app.get("/runs")
@@ -106,6 +120,7 @@ def get_latest_run(db: Session = Depends(get_db)):
         "summary": _run_to_summary_dict(run),
         "matches": [_match_to_dict(m) for m in run.matches],
         "exceptions": [_exception_to_dict(e) for e in run.exceptions],
+        "resolution_summary": auto_resolve_run(run.id, db),
     }
 
 
@@ -118,6 +133,7 @@ def get_run(run_id: int, db: Session = Depends(get_db)):
         "summary": _run_to_summary_dict(run),
         "matches": [_match_to_dict(m) for m in run.matches],
         "exceptions": [_exception_to_dict(e) for e in run.exceptions],
+        "resolution_summary": auto_resolve_run(run.id, db),
     }
 
 
@@ -140,10 +156,12 @@ def investigate_run(run_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Run not found")
     
     if not run.exceptions:
+        resolution_summary = auto_resolve_run(run_id, db)
         return {
             "run_id": run_id,
             "investigations": [],
-            "message": "No exceptions to investigate in this run"
+            "message": "No exceptions to investigate in this run",
+            "resolution_summary": resolution_summary,
         }
     
     # Convert exceptions to dicts for the investigator
@@ -169,6 +187,7 @@ def investigate_run(run_id: int, db: Session = Depends(get_db)):
     
     # Save investigations to DB
     saved_count = save_investigations(db, run_id, investigations)
+    resolution_summary = auto_resolve_run(run_id, db)
     
     # Fetch fresh from DB to return (ensures we return what was actually saved)
     saved_investigations = db.query(Investigation).filter(
@@ -179,6 +198,7 @@ def investigate_run(run_id: int, db: Session = Depends(get_db)):
         "run_id": run_id,
         "investigations_count": saved_count,
         "investigations": [_investigation_to_dict(inv) for inv in saved_investigations],
+        "resolution_summary": resolution_summary,
     }
 
 
@@ -207,4 +227,12 @@ def ask_question(req: QuestionRequest, db: Session = Depends(get_db)):
         run_id=req.run_id,
         db_session=db
     )
+    return result
+
+
+@app.get("/forecast/{run_id}")
+def get_cash_forecast(run_id: int, db: Session = Depends(get_db)):
+    result = compute_cash_position(run_id=run_id, db_session=db)
+    if "error" in result:
+        raise HTTPException(status_code=404, detail=result["error"])
     return result

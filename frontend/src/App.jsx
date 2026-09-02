@@ -5,6 +5,7 @@ import SummaryCard from './components/SummaryCard'
 import MatchesTable from './components/MatchesTable'
 import ExceptionCard from './components/ExceptionCard'
 import QueryBox from './components/QueryBox'
+import ForecastCard from './components/ForecastCard'
 
 const API_URL = 'http://127.0.0.1:8000'
 
@@ -72,7 +73,8 @@ function App() {
         {error && <div className="error-banner" role="alert"><strong>Service unavailable.</strong> {error}</div>}
         {loading ? <div className="state-panel"><span className="large-spinner" aria-hidden="true" /><p>Loading latest reconciliation...</p></div> : run ? <>
           <div className="run-meta"><span>Latest run</span><time dateTime={run.summary?.run_at}>{run.summary?.run_at ? new Date(run.summary.run_at).toLocaleString() : 'Time unavailable'}</time>{run.summary?.run_id && <span className="run-id">Run {run.summary.run_id}</span>}</div>
-          <SummaryCard summary={run.summary} />
+          <SummaryCard summary={run.summary} resolutionSummary={run.resolution_summary} />
+          <ForecastCard runId={run.summary?.run_id} />
           <MatchesTable matches={run.matches ?? []} />
           <section className="exceptions-section"><div className="section-heading"><div><p className="eyebrow">Review queue</p><h2>Exceptions</h2></div><span className="section-count">{exceptions.length} total</span></div><ExceptionGroup title="Bank Reconciliation" items={bankExceptions} /><ExceptionGroup title="Internal Order DB Reconciliation" items={dbExceptions} /></section>
           <QueryBox runId={run.summary?.run_id} />

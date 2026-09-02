@@ -21,6 +21,7 @@ import os
 import sys
 import json
 import re as _re
+import time
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -42,6 +43,7 @@ if LLM_AVAILABLE:
 
 
 def run_pipeline(base=None):
+    started_at = time.perf_counter()
     if base is None:
         base = os.path.join(os.path.dirname(__file__), "..", "data", "generated")
     settlement, ledger = load_data(base)
@@ -103,6 +105,7 @@ def run_pipeline(base=None):
                 if matched_row is not None and amount_gap_pct <= GUARDRAIL_MAX_GAP_PCT and narration_has_evidence:
                     bank_matches.append({
                         "settlement_id": b["settlement_id"],
+                        "settled_amount": int(b["batch_total"]),
                         "matched_entry_id": verdict["entry_id"],
                         "tier": "llm",
                         "confidence": verdict.get("confidence"),
@@ -191,16 +194,25 @@ def run_pipeline(base=None):
 
     total_batches = len(batches)
     matched_count = len(bank_matches)
+    records_processed = len(settlement) + len(ledger) + len(orders)
+    total_time_sec = time.perf_counter() - started_at
+    records_per_sec = records_processed / total_time_sec if total_time_sec else 0
 
     result = {
         "run_at": datetime.now().isoformat(),
         "llm_available": LLM_AVAILABLE,
+        "records_processed": records_processed,
+        "total_time_sec": total_time_sec,
+        "records_per_sec": records_per_sec,
         "summary": {
             "total_settlement_batches": total_batches,
             "matched_batches": matched_count,
             "match_rate_pct": round(matched_count / total_batches * 100, 1) if total_batches else 0,
             "total_exceptions": len(exceptions),
             "db_side_exceptions": len(db_exceptions),
+            "records_processed": records_processed,
+            "total_time_sec": total_time_sec,
+            "records_per_sec": records_per_sec,
         },
         "matches": bank_matches,
         "exceptions": exceptions,
