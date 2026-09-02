@@ -10,6 +10,17 @@ from models import BatchRun, Exception_, Investigation, Match, GLPosting
 CONFIDENCE_THRESHOLD = 0.7
 
 
+def automatic_resolution_confirmed(investigation: Investigation) -> bool:
+    """Only treat an investigation as automatic when an action was confirmed."""
+    return (
+        investigation.resolution_type == "automatic_action_completion"
+        and bool(investigation.resolution_action)
+        and investigation.resolved_at is not None
+        and investigation.investigated_at is not None
+        and investigation.resolved_at >= investigation.investigated_at
+    )
+
+
 def _resolution_summary(auto_reconciled: int, auto_resolved: int, needs_human_review: int) -> Dict:
     total = auto_reconciled + auto_resolved + needs_human_review
     closed = auto_reconciled + auto_resolved
@@ -62,15 +73,14 @@ def auto_resolve_run(run_id: int, db_session: Session) -> Dict:
         related = investigations_by_reference.get(exception.reference_id, [])
         qualifying = [
             investigation for investigation in related
-            if investigation.confidence is not None and investigation.confidence >= CONFIDENCE_THRESHOLD
+            if investigation.confidence is not None
+            and investigation.confidence >= CONFIDENCE_THRESHOLD
+            and automatic_resolution_confirmed(investigation)
         ]
         if qualifying:
             investigation = max(qualifying, key=lambda item: item.confidence)
             exception.status = "auto_resolved"
             investigation.status = "auto_resolved"
-            investigation.resolved_at = investigation.resolved_at or datetime.utcnow()
-            investigation.resolution_type = "automatic_action_completion"
-            investigation.resolution_action = exception.recommended_action or "No drafted action was recorded."
             auto_resolved += 1
         else:
             exception.status = "needs_human_review"

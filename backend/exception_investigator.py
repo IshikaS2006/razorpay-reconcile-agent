@@ -134,7 +134,7 @@ def investigate_exception(exception: Dict, dispute_log: pd.DataFrame) -> Dict:
         "status": "explained" | "escalated",
         "explanation": str,
         "confidence": float (0-1),
-        "evidence_used": str (JSON array of dispute log IDs, or "[]"),
+        "evidence_used": list of dispute log IDs,
         "reasoning_chain": str
     }
     """
@@ -148,7 +148,7 @@ def investigate_exception(exception: Dict, dispute_log: pd.DataFrame) -> Dict:
             "status": "escalated",
             "explanation": "No related disputes found in log, and LLM reasoning not available.",
             "confidence": 0.0,
-            "evidence_used": json.dumps([]),
+            "evidence_used": [],
             "reasoning_chain": "No investigation performed (LLM unavailable, no disputes found).",
         }
     
@@ -186,7 +186,7 @@ def investigate_exception(exception: Dict, dispute_log: pd.DataFrame) -> Dict:
                 "status": status,
                 "explanation": explanation,
                 "confidence": min(1.0, max(0.0, confidence)),  # clamp to [0, 1]
-                "evidence_used": json.dumps(evidence_ids),
+                "evidence_used": evidence_ids,
                 "reasoning_chain": f"Evidence found: {len(related_disputes)} disputes. LLM reasoning: {evidence_summary}",
             }
         except Exception as e:
@@ -196,7 +196,7 @@ def investigate_exception(exception: Dict, dispute_log: pd.DataFrame) -> Dict:
                 "status": "escalated",
                 "explanation": f"LLM investigation attempted but failed: {str(e)}",
                 "confidence": 0.0,
-                "evidence_used": json.dumps(evidence_ids) if evidence_ids else json.dumps([]),
+                "evidence_used": evidence_ids,
                 "reasoning_chain": f"Error during LLM reasoning: {str(e)}",
             }
     else:
@@ -211,7 +211,7 @@ def investigate_exception(exception: Dict, dispute_log: pd.DataFrame) -> Dict:
                 "status": "escalated",  # Without LLM, always escalate
                 "explanation": f"Related disputes found: {dispute_summary}. LLM reasoning not available.",
                 "confidence": 0.5,  # Moderate confidence from evidence presence alone
-                "evidence_used": json.dumps(evidence_ids),
+                "evidence_used": evidence_ids,
                 "reasoning_chain": f"Found {len(related_disputes)} related dispute(s) in log, but LLM not available to reason.",
             }
         else:
@@ -220,7 +220,7 @@ def investigate_exception(exception: Dict, dispute_log: pd.DataFrame) -> Dict:
                 "status": "escalated",
                 "explanation": "No related disputes found, and LLM reasoning not available.",
                 "confidence": 0.0,
-                "evidence_used": json.dumps([]),
+                "evidence_used": [],
                 "reasoning_chain": "No evidence or LLM reasoning available.",
             }
 

@@ -3,6 +3,7 @@ Saves a pipeline_output.json-shaped result dict into Postgres.
 Also handles saving investigation results from the exception_investigator module.
 """
 from datetime import datetime
+import json
 from models import BatchRun, Match, Exception_, Investigation
 
 
@@ -65,16 +66,23 @@ def save_investigations(db, run_id: int, investigations: list) -> int:
     
     Returns: Count of saved investigations
     """
+    investigated_at = datetime.utcnow()
     for inv in investigations:
+        evidence = inv.get("evidence_used", inv.get("evidence_ids", []))
+        if isinstance(evidence, str):
+            try:
+                evidence = json.loads(evidence)
+            except json.JSONDecodeError:
+                evidence = []
         db.add(Investigation(
             run_id=run_id,
             exception_reference_id=inv.get("exception_reference_id"),
             status=inv.get("status"),
             explanation=inv.get("explanation"),
             confidence=inv.get("confidence"),
-            evidence_used=inv.get("evidence_used"),
+            evidence_used=json.dumps(evidence or []),
             reasoning_chain=inv.get("reasoning_chain"),
-            investigated_at=datetime.now(),
+            investigated_at=investigated_at,
         ))
     
     db.commit()

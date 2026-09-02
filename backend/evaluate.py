@@ -10,12 +10,154 @@ paths are resolved relative to this file)
 
 import os
 import sys
+import json
 import pandas as pd
 
 sys.path.insert(0, os.path.dirname(__file__))
 from pipeline import run_pipeline
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "generated")
+
+
+def _rate(numerator, denominator):
+    return round(numerator / denominator, 4) if denominator else 0.0
+
+
+def _precision_recall(true_positive, predicted, expected):
+    return {
+        "precision": _rate(true_positive, predicted),
+        "recall": _rate(true_positive, expected),
+    }
+
+
+def _evidence_ids(investigation):
+    if not investigation:
+        return []
+    try:
+        value = investigation.evidence_used
+        return value if isinstance(value, list) else json.loads(value or "[]")
+    except (TypeError, json.JSONDecodeError):
+        return []
+
+
+def score_result(result, data_dir=DATA_DIR):
+    """Score a pipeline result against the generated ground-truth files."""
+    matches = {m["settlement_id"]: m for m in result["matches"]}
+    exceptions = result["exceptions"]
+    exceptions_by_ref = {}
+    for exception in exceptions:
+        exceptions_by_ref.setdefault(exception["reference_id"], []).append(exception)
+
+    gt = pd.read_csv(os.path.join(data_dir, "ground_truth.csv"))
+    expected_bank_matches = set(gt.loc[gt["expected_match_type"] != "exception", "settlement_id"])
+    predicted_bank_matches = set(matches)
+    bank_true_positive = len(expected_bank_matches & predicted_bank_matches)
+    bank = _precision_recall(bank_true_positive, len(predicted_bank_matches), len(expected_bank_matches))
+    bank["matches"] = bank_true_positive
+    bank["total_settlement_batches"] = len(gt)
+    bank["match_rate"] = _rate(len(predicted_bank_matches), len(gt))
+
+    ledger_gt = pd.read_csv(os.path.join(data_dir, "ledger_ground_truth.csv"))
+    flagged_entry_ids = {
+        e["reference_id"] for e in exceptions
+        if e["exception_type"] == "unexplained_ledger_row"
+    }
+    unrelated_correct = len(ledger_gt) - len(set(ledger_gt["entry_id"]) & flagged_entry_ids)
+
+    order_gt = pd.read_csv(os.path.join(data_dir, "order_ground_truth.csv"))
+    expected_order_ids = set(order_gt["order_id"])
+    predicted_order_ids = {
+        e["reference_id"] for e in exceptions
+        if e["source"] == "db_reconciliation"
+        and e["exception_type"] in {"phantom_charge", "ghost_order"}
+    }
+    order_true_positive = len(expected_order_ids & predicted_order_ids)
+
+    tax_gt = pd.read_csv(os.path.join(data_dir, "tax_ground_truth.csv"))
+    expected_tax_ids = set(tax_gt["entity_id"])
+    predicted_tax_ids = {
+        e["reference_id"] for e in exceptions
+        if e["source"] == "tax_verification"
+        and e["exception_type"] == "tax_line_mismatch"
+    }
+    tax_true_positive = len(expected_tax_ids & predicted_tax_ids)
+
+    return {
+        "bank_matching": bank,
+        "unrelated_ledger_filter": {
+            "accuracy": _rate(unrelated_correct, len(ledger_gt)),
+            "correctly_ignored": unrelated_correct,
+            "total": len(ledger_gt),
+        },
+        "phantom_ghost_detection": {
+            "accuracy": _rate(order_true_positive, len(order_gt)),
+            "correct": order_true_positive,
+            "total": len(order_gt),
+        },
+        "tax_anomaly_detection": {
+            **_precision_recall(tax_true_positive, len(predicted_tax_ids), len(expected_tax_ids)),
+            "correct": tax_true_positive,
+            "total": len(expected_tax_ids),
+        },
+    }
+
+
+def build_accuracy_report(run_id, db_session, data_dir=DATA_DIR):
+    """Build an accuracy report from persisted run, match, exception, and investigation rows."""
+    from models import BatchRun
+
+    run = db_session.query(BatchRun).filter(BatchRun.id == run_id).first()
+    if not run:
+        return None
+
+    result = {
+        "matches": [{"settlement_id": m.settlement_id} for m in run.matches],
+        "exceptions": [{
+            "source": e.source,
+            "exception_type": e.exception_type,
+            "reference_id": e.reference_id,
+        } for e in run.exceptions],
+    }
+    dimensions = score_result(result, data_dir)
+    investigations_by_ref = {}
+    for investigation in run.investigations:
+        investigations_by_ref.setdefault(investigation.exception_reference_id, []).append(investigation)
+
+    exception_list = []
+    for exception in run.exceptions:
+        investigations = investigations_by_ref.get(exception.reference_id, [])
+        investigation = max(investigations, key=lambda item: item.confidence or 0, default=None)
+        auto_resolved = exception.status == "auto_resolved"
+        exception_list.append({
+            "type": exception.exception_type,
+            "source": exception.source,
+            "reference_id": exception.reference_id,
+            "status": exception.status or "needs_human_review",
+            "auto_resolved": auto_resolved,
+            "llm_investigated": investigation is not None,
+            "confidence": investigation.confidence if investigation else None,
+            "evidence_ids": _evidence_ids(investigation),
+            "reason": (
+                investigation.reasoning_chain if investigation and not auto_resolved
+                else exception.detail
+            ),
+        })
+
+    return {
+        "run_id": run.id,
+        "overall_match_rate": {
+            "matches": run.matched_batches or 0,
+            "total_settlement_batches": run.total_settlement_batches or 0,
+            "rate": _rate(run.matched_batches or 0, run.total_settlement_batches or 0),
+        },
+        "dimensions": dimensions,
+        "exceptions": exception_list,
+        "throughput": {
+            "total_records_processed": run.records_processed or 0,
+            "total_time_sec": run.total_time_sec or 0.0,
+            "records_per_sec": run.records_per_sec or 0.0,
+        },
+    }
 
 
 def evaluate():
@@ -103,9 +245,22 @@ def evaluate():
     print(f"\n[3] THIRD-SOURCE (ORDER DB) RECONCILIATION")
     print(f"    {db_correct}/{db_correct+db_wrong} correct ({db_correct/(db_correct+db_wrong)*100:.1f}%)")
 
+    # --- 4. Tax anomaly detection accuracy ---
+    tax_gt = pd.read_csv(os.path.join(DATA_DIR, "tax_ground_truth.csv"))
+    expected_tax_ids = set(tax_gt["entity_id"])
+    predicted_tax_ids = {
+        e["reference_id"] for e in result["exceptions"]
+        if e["source"] == "tax_verification" and e["exception_type"] == "tax_line_mismatch"
+    }
+    tax_true_positive = len(expected_tax_ids & predicted_tax_ids)
+    tax_scores = _precision_recall(tax_true_positive, len(predicted_tax_ids), len(expected_tax_ids))
+    print(f"\n[4] TAX ANOMALY DETECTION")
+    print(f"    Precision: {tax_scores['precision']*100:.1f}% ({tax_true_positive}/{len(predicted_tax_ids) or 0})")
+    print(f"    Recall:    {tax_scores['recall']*100:.1f}% ({tax_true_positive}/{len(expected_tax_ids)})")
+
     # --- Overall ---
-    total_correct = correct + (len(ledger_gt) - false_positives) + db_correct
-    total_cases = (correct + wrong) + len(ledger_gt) + (db_correct + db_wrong)
+    total_correct = correct + (len(ledger_gt) - false_positives) + db_correct + tax_true_positive
+    total_cases = (correct + wrong) + len(ledger_gt) + (db_correct + db_wrong) + len(expected_tax_ids)
     print(f"\n{'='*70}")
     print(f"OVERALL: {total_correct}/{total_cases} correct ({total_correct/total_cases*100:.1f}%)")
     print(f"LLM available this run: {result['llm_available']}")

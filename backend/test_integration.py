@@ -8,6 +8,8 @@ Integration test: Show that exception_investigator correctly:
 """
 import sys
 import os
+import json
+from datetime import datetime, timedelta
 sys.path.insert(0, os.path.dirname(__file__))
 
 from exception_investigator import (
@@ -15,27 +17,25 @@ from exception_investigator import (
     find_related_disputes,
     investigate_run_exceptions,
 )
+from evaluate import score_result
+from pipeline import run_pipeline
+from auto_resolver import automatic_resolution_confirmed
+from db_writer import save_investigations
+from models import Investigation
 
-def main():
-    print("=" * 70)
-    print("INTEGRATION TEST: Exception Investigator with Refund Dispute Log")
-    print("=" * 70)
+
+def test_pipeline_accuracy():
+    result = run_pipeline()
+    scores = score_result(result)
+    assert scores["bank_matching"]["match_rate"] >= 0.90
+    assert scores["tax_anomaly_detection"]["recall"] == 1.0
     
+
+def test_exception_investigator():
     data_base = os.path.join(os.path.dirname(__file__), "..", "data", "generated")
-    
-    # 1. Load dispute log
-    print("\n1. Loading refund_dispute_log.csv...")
     dispute_log = load_dispute_log(data_base)
-    print(f"   Loaded {len(dispute_log)} dispute entries")
-    
-    # 2. Show dispute types
-    print("\n2. Dispute log summary:")
-    print(f"   - Refunds: {len(dispute_log[dispute_log['type'] == 'refund'])}")
-    print(f"   - Disputes: {len(dispute_log[dispute_log['type'] == 'dispute'])}")
-    print(f"   - Chargebacks: {len(dispute_log[dispute_log['type'] == 'chargeback'])}")
-    
-    # 3. Create sample exceptions
-    print("\n3. Creating sample exceptions for investigation...")
+    assert not dispute_log.empty
+
     test_exceptions = [
         {
             "reference_id": "setl_100002RP",  # partial_refund batch
@@ -60,8 +60,6 @@ def main():
         },
     ]
     
-    # 4. Investigate
-    print("\n4. Running exception investigation (using LLM + dispute log)...\n")
     results = investigate_run_exceptions(
         run_id=0,  # test run
         exceptions=test_exceptions,
@@ -69,32 +67,55 @@ def main():
         data_base=data_base,
     )
     
-    # 5. Display results
-    print("=" * 70)
-    print("INVESTIGATION RESULTS")
-    print("=" * 70)
-    
-    explained_count = sum(1 for r in results if r["status"] == "explained")
-    escalated_count = sum(1 for r in results if r["status"] == "escalated")
-    avg_confidence = sum(r["confidence"] for r in results) / len(results) if results else 0
-    
-    print(f"\nSummary:")
-    print(f"  Total exceptions investigated: {len(results)}")
-    print(f"  Explained (confidence >= 0.7): {explained_count}")
-    print(f"  Escalated (confidence < 0.7):  {escalated_count}")
-    print(f"  Average confidence: {avg_confidence:.2f}")
-    
-    print(f"\nDetailed Results:")
-    for i, r in enumerate(results, 1):
-        print(f"\n{i}. Exception: {r['exception_reference_id']}")
-        print(f"   Status: {r['status'].upper()} (confidence {r['confidence']:.2f})")
-        print(f"   Evidence: {r['evidence_used']}")
-        print(f"   Explanation: {r['explanation'][:100]}...")
-        print(f"   Reasoning: {r['reasoning_chain'][:80]}...")
-    
-    print("\n" + "=" * 70)
-    print("✓ Integration test complete")
-    print("=" * 70)
+    assert len(results) == len(test_exceptions)
+    assert all(0.0 <= result["confidence"] <= 1.0 for result in results)
+    assert all(result["confidence"] is not None for result in results)
+    assert all(result["reasoning_chain"] for result in results)
 
-if __name__ == "__main__":
-    main()
+
+def test_investigation_recommendation_requires_human_review():
+    investigation = Investigation(
+        confidence=0.99,
+        resolution_type=None,
+        resolution_action="Open a Razorpay support ticket",
+        investigated_at=datetime.utcnow(),
+    )
+    assert not automatic_resolution_confirmed(investigation)
+
+
+def test_completed_automatic_resolution_is_confirmed():
+    investigated_at = datetime.utcnow()
+    investigation = Investigation(
+        confidence=0.99,
+        resolution_type="automatic_action_completion",
+        resolution_action="Create confirmed GL posting",
+        investigated_at=investigated_at,
+        resolved_at=investigated_at + timedelta(seconds=1),
+    )
+    assert automatic_resolution_confirmed(investigation)
+    assert investigation.resolved_at >= investigation.investigated_at
+
+
+def test_investigation_evidence_and_timestamp_are_persisted():
+    class CapturingSession:
+        def __init__(self):
+            self.items = []
+
+        def add(self, item):
+            self.items.append(item)
+
+        def commit(self):
+            pass
+
+    session = CapturingSession()
+    save_investigations(session, 1, [{
+        "exception_reference_id": "setl_100002RP",
+        "status": "escalated",
+        "confidence": 0.5,
+        "evidence_used": ["DISP100001RP"],
+        "reasoning_chain": "Evidence requires human review.",
+    }])
+    saved = session.items[0]
+    assert json.loads(saved.evidence_used) == ["DISP100001RP"]
+    assert saved.investigated_at is not None
+    assert saved.resolved_at is None

@@ -22,6 +22,7 @@ from exception_investigator import investigate_run_exceptions
 from qa_layer import answer_question
 from cash_forecaster import compute_cash_position
 from auto_resolver import auto_resolve_run
+from evaluate import build_accuracy_report
 
 app = FastAPI(title="Reconcile API")
 
@@ -46,8 +47,8 @@ def _match_to_dict(m: Match):
     }
 
 
-def _exception_to_dict(e: Exception_):
-    return {
+def _exception_to_dict(e: Exception_, investigation=None):
+    result = {
         "source": e.source,
         "exception_type": e.exception_type,
         "reference_id": e.reference_id,
@@ -56,21 +57,34 @@ def _exception_to_dict(e: Exception_):
         "recommended_action": e.recommended_action,
         "status": e.status,
     }
+    if investigation:
+        result["investigation"] = _investigation_to_dict(investigation)
+    return result
 
 
 def _investigation_to_dict(inv: Investigation):
+    evidence_ids = _parse_evidence_ids(inv.evidence_used)
     return {
         "exception_reference_id": inv.exception_reference_id,
         "status": inv.status,
         "explanation": inv.explanation,
         "confidence": inv.confidence,
-        "evidence_used": inv.evidence_used,
+        "evidence_used": evidence_ids,
+        "evidence_ids": evidence_ids,
         "reasoning_chain": inv.reasoning_chain,
         "investigated_at": inv.investigated_at.isoformat() if inv.investigated_at else None,
         "resolved_at": inv.resolved_at.isoformat() if inv.resolved_at else None,
         "resolution_type": inv.resolution_type,
         "resolution_action": inv.resolution_action,
     }
+
+
+def _parse_evidence_ids(value):
+    import json
+    try:
+        return json.loads(value or "[]")
+    except (TypeError, json.JSONDecodeError):
+        return []
 
 
 def _run_to_summary_dict(r: BatchRun):
@@ -89,6 +103,29 @@ def _run_to_summary_dict(r: BatchRun):
     }
 
 
+def _investigations_by_reference(run):
+    investigations = {}
+    for investigation in run.investigations:
+        investigations.setdefault(investigation.exception_reference_id, []).append(investigation)
+    return investigations
+
+
+def _run_to_detail_dict(run, resolution_summary=None):
+    investigations = _investigations_by_reference(run)
+    return {
+        "summary": _run_to_summary_dict(run),
+        "matches": [_match_to_dict(m) for m in run.matches],
+        "exceptions": [
+            _exception_to_dict(e, investigations.get(e.reference_id, [None])[-1])
+            for e in run.exceptions
+        ],
+        "investigations": [
+            _investigation_to_dict(investigation) for investigation in run.investigations
+        ],
+        "resolution_summary": resolution_summary,
+    }
+
+
 class QuestionRequest(BaseModel):
     question: str
     run_id: int
@@ -102,6 +139,9 @@ def trigger_run(db: Session = Depends(get_db)):
     run = db.query(BatchRun).filter(BatchRun.id == run_id).first()
     response = _run_to_summary_dict(run)
     response["resolution_summary"] = resolution_summary
+    response["matches"] = [_match_to_dict(m) for m in run.matches]
+    response["exceptions"] = [_exception_to_dict(e) for e in run.exceptions]
+    response["investigations"] = []
     return response
 
 
@@ -116,12 +156,7 @@ def get_latest_run(db: Session = Depends(get_db)):
     run = db.query(BatchRun).order_by(BatchRun.run_at.desc()).first()
     if not run:
         raise HTTPException(status_code=404, detail="No runs yet -- POST /run first")
-    return {
-        "summary": _run_to_summary_dict(run),
-        "matches": [_match_to_dict(m) for m in run.matches],
-        "exceptions": [_exception_to_dict(e) for e in run.exceptions],
-        "resolution_summary": auto_resolve_run(run.id, db),
-    }
+    return _run_to_detail_dict(run, auto_resolve_run(run.id, db))
 
 
 @app.get("/runs/{run_id}")
@@ -129,12 +164,15 @@ def get_run(run_id: int, db: Session = Depends(get_db)):
     run = db.query(BatchRun).filter(BatchRun.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
-    return {
-        "summary": _run_to_summary_dict(run),
-        "matches": [_match_to_dict(m) for m in run.matches],
-        "exceptions": [_exception_to_dict(e) for e in run.exceptions],
-        "resolution_summary": auto_resolve_run(run.id, db),
-    }
+    return _run_to_detail_dict(run, auto_resolve_run(run.id, db))
+
+
+@app.get("/accuracy-report/{run_id}")
+def get_accuracy_report(run_id: int, db: Session = Depends(get_db)):
+    report = build_accuracy_report(run_id, db)
+    if report is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return report
 
 
 @app.post("/investigate/{run_id}")
