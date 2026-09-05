@@ -28,14 +28,9 @@ Reconcile automates the verification loop, but does **not** pretend every case c
 ## What the agent does
 
 ### 1. Multi-source reconciliation
-It compares three independent sources:
+It compares two independent sources:
 - `settlement_report.csv`
 - `bank_ledger.csv`
-- `orders_db.csv`
-
-The third source matters because it catches issues a 2-source settlement-vs-bank workflow cannot see:
-- **phantom charge**: money settled, but internal order state is failed/pending
-- **ghost order**: internal order completed, but no real Razorpay settlement exists
 
 ### 2. Tiered matching engine
 Matching is intentionally staged:
@@ -87,7 +82,7 @@ The model is intentionally naive and explainable rather than overfit.
 ```text
 settlement_report.csv ─┐
 bank_ledger.csv ───────┼─→ Tier 1 exact → Tier 2 fuzzy → Tier 3 LLM (leftovers only)
-orders_db.csv ─────────┘            │                    │
+          │                    │
                                     │                    └─ deterministic guardrail
                                     │
                                     ├─ DB reconciliation (phantom charge / ghost order)
