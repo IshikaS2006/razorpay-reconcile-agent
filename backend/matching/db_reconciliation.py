@@ -1,27 +1,33 @@
 """
-Pass 0: DB <-> Razorpay reconciliation (the third source)
+Optional DB <-> Razorpay reconciliation.
 
-This is the check Razorpay's own "Ray" agentic dashboard CANNOT do --
-it has no visibility into the merchant's internal order system.
-
-Two directions checked:
-  1. Every order_id in Razorpay's settlement data should exist and be
-     "completed" in the internal DB. If it's "failed"/"pending" there
-     but Razorpay actually captured + settled it -> PHANTOM CHARGE
-     (money collected, order likely never fulfilled -- a webhook drop).
-
-  2. Every "completed" order in the internal DB should have a real
-     Razorpay payment behind it. If not -> GHOST ORDER (possible
-     data-entry error or revenue leakage -- shipped with no payment).
+If `orders_db.csv` is not supplied, this module simply returns no DB-side
+exceptions and the rest of the pipeline continues in settlement+bank mode.
 """
 
+import os
 import pandas as pd
 
 def load_orders(base="/home/claude"):
-    orders = pd.read_csv(f"{base}/orders_db.csv")
+    """Load the seller's optional order database when it is supplied."""
+    path = os.path.join(base, "orders_db.csv")
+    if not os.path.exists(path):
+        return None
+    orders = pd.read_csv(path)
+    rename_map = {}
+    if "status" in orders.columns and "order_status" not in orders.columns:
+        rename_map["status"] = "order_status"
+    if "amount" in orders.columns and "gross_amount" not in orders.columns:
+        rename_map["amount"] = "gross_amount"
+    if rename_map:
+        orders = orders.rename(columns=rename_map)
     return orders
 
 def db_vs_razorpay_check(orders: pd.DataFrame, settlement: pd.DataFrame):
+    if orders is None or orders.empty:
+        return []
+    if "order_status" not in orders.columns or "gross_amount" not in orders.columns:
+        return []
     exceptions = []
     razorpay_order_ids = set(settlement["order_id"])
     db_order_ids = set(orders["order_id"])

@@ -11,14 +11,14 @@ Reflects the REAL Razorpay mechanism (confirmed from Razorpay's own API docs):
     with Razorpay at all. A good agent must correctly IGNORE these, not
     force-match or flag them as exceptions.
 
-Files produced (5 total):
+Files produced (core files plus optional enrichment/context):
   1. settlement_report.csv      -- one row per individual payment/refund (Razorpay side)
   2. bank_ledger.csv            -- one row per bank statement line (bank side),
                                    mostly settlement credits, some unrelated noise
   3. ground_truth.csv           -- one row per settlement BATCH (settlement_id),
                                    recording which ledger entry(ies) it should
                                    match to, and why (noise type)
-  4. orders_db.csv              -- one row per order in the merchant's internal DB
+    4. orders_db.csv              -- optional seller order data (omit with --core-only)
                                    (includes phantom-charge and ghost-order cases)
   5. refund_dispute_log.csv     -- one row per customer dispute/refund/chargeback log,
                                    correlated with problematic batches and phantom charges.
@@ -32,9 +32,12 @@ Ground truth CSVs (for evaluation):
 
 import random
 import csv
+import sys
 from datetime import date, datetime, timedelta
 
 random.seed(7)
+
+INCLUDE_ORDERS = "--core-only" not in sys.argv
 
 import os
 OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "generated")
@@ -42,8 +45,8 @@ os.makedirs(OUT_DIR, exist_ok=True)
 os.chdir(OUT_DIR)
 
 START_DATE = date(2026, 7, 1)
-N_BATCHES = 20          # settlement batches (settlement_id groups)
-N_UNRELATED_LEDGER = 8  # non-Razorpay bank lines mixed into the statement
+N_BATCHES = 60          # settlement batches (settlement_id groups)
+N_UNRELATED_LEDGER = 24 # non-Razorpay bank lines mixed into the statement
 
 def rdate(start, day_range=45):
     return start + timedelta(days=random.randint(0, day_range))
@@ -70,13 +73,13 @@ ledger_counter = 1
 payment_counter = 1
 
 batch_noise_plan = (
-    ["clean_exact"] * 9 +
-    ["fee_deduction"] * 3 +
-    ["date_lag"] * 3 +
-    ["partial_refund"] * 2 +
-    ["duplicate_entry"] * 1 +
-    ["reference_mismatch"] * 1 +
-    ["missing_in_ledger"] * 1
+    ["clean_exact"] * 27 +
+    ["fee_deduction"] * 9 +
+    ["date_lag"] * 9 +
+    ["partial_refund"] * 6 +
+    ["duplicate_entry"] * 3 +
+    ["reference_mismatch"] * 3 +
+    ["missing_in_ledger"] * 3
 )
 random.shuffle(batch_noise_plan)
 assert len(batch_noise_plan) == N_BATCHES
@@ -231,7 +234,7 @@ def write_csv(path, rows, fieldnames):
 # internally, independent of whether the bank credit itself is correct.
 # ============================================================
 rows_tax_truth = []
-n_tax_anomalies = 3
+n_tax_anomalies = 9
 anomaly_indices = random.sample(range(len(rows_settlement)), n_tax_anomalies)
 
 for idx in anomaly_indices:
@@ -289,7 +292,7 @@ rows_order_truth = []
 all_order_ids = [r["order_id"] for r in rows_settlement]  # every order that WAS paid via Razorpay
 
 # Pick a handful of orders to deliberately desync (phantom charge / webhook drop)
-n_phantom = 3
+n_phantom = 9
 phantom_order_ids = random.sample(all_order_ids, n_phantom)
 
 for r in rows_settlement:
@@ -314,7 +317,7 @@ for r in rows_settlement:
 
 # A couple of orders that exist in DB as "completed" but were NEVER actually paid via Razorpay
 # (internal data-entry error / potential leakage -- the reverse blind spot)
-n_ghost_orders = 2
+n_ghost_orders = 6
 for k in range(n_ghost_orders):
     ghost_id = f"order_GHOST{900000+k}RP"
     ghost_amount = paise(round(random.uniform(500, 5000), 2))
@@ -336,13 +339,18 @@ for k in range(n_ghost_orders):
 
 random.shuffle(rows_orders)
 
-write_csv("orders_db.csv", rows_orders,
-    ["order_id","customer_email","gross_amount","payment_method","order_status","created_at"])
-write_csv("order_ground_truth.csv", rows_order_truth,
-    ["order_id","exception_type","notes"])
-
-print(f"orders_db.csv           : {len(rows_orders)} rows ({n_phantom} phantom-charge, {n_ghost_orders} ghost-order cases)")
-print(f"order_ground_truth.csv  : {len(rows_order_truth)} flagged DB-side exceptions")
+if INCLUDE_ORDERS:
+    write_csv("orders_db.csv", rows_orders,
+        ["order_id","customer_email","gross_amount","payment_method","order_status","created_at"])
+    write_csv("order_ground_truth.csv", rows_order_truth,
+        ["order_id","exception_type","notes"])
+    print(f"orders_db.csv           : {len(rows_orders)} rows ({n_phantom} phantom-charge, {n_ghost_orders} ghost-order cases)")
+    print(f"order_ground_truth.csv  : {len(rows_order_truth)} flagged DB-side exceptions")
+else:
+    for optional_file in ("orders_db.csv", "order_ground_truth.csv"):
+        if os.path.exists(optional_file):
+            os.remove(optional_file)
+    print("orders_db.csv           : omitted (--core-only; optional source not supplied)")
 
 # ============================================================
 # FOURTH SOURCE: Refund & Dispute Log (refund_dispute_log.csv)
@@ -461,10 +469,11 @@ write_csv("refund_dispute_log.csv", rows_dispute_log,
     ["log_id","related_order_id","related_settlement_id","type","amount","status","created_at","notes"])
 
 print(f"refund_dispute_log.csv  : {len(rows_dispute_log)} rows (correlated with partial refunds, reference mismatches, phantom charges)")
-print(f"\nAll 5 synthetic CSVs generated successfully in: {os.getcwd()}")
+print(f"\nCore settlement + bank CSVs generated successfully in: {os.getcwd()}")
 
 print(f"\nsettlement_report.csv  : {len(rows_settlement)} payment rows across {N_BATCHES} batches")
 print(f"bank_ledger.csv        : {len(rows_ledger)} rows ({N_UNRELATED_LEDGER} unrelated)")
-print(f"orders_db.csv          : {len(rows_orders)} rows ({n_phantom} phantom, {n_ghost_orders} ghost)")
+if INCLUDE_ORDERS:
+    print(f"orders_db.csv          : {len(rows_orders)} rows ({n_phantom} phantom, {n_ghost_orders} ghost)")
 print(f"ground_truth.csv       : {len(rows_batch_truth)} settlement batches")
 print(f"ledger_ground_truth.csv: {len(rows_ledger_truth)} unrelated ledger lines")

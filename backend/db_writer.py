@@ -25,6 +25,7 @@ def save_run(db, result: dict) -> int:
         records_processed=summary["records_processed"],
         total_time_sec=summary["total_time_sec"],
         records_per_sec=summary["records_per_sec"],
+        orders_available=result.get("order_reconciliation", {}).get("enabled", False),
     )
     db.add(run)
     db.flush()  # assigns run.id without committing yet
@@ -38,6 +39,10 @@ def save_run(db, result: dict) -> int:
             tier=m.get("tier"),
             confidence=m.get("confidence"),
             reason=m.get("reason"),
+            match_subtype=m.get("match_subtype"),
+            expected_amount_paise=m.get("expected_amount_paise"),
+            actual_amount_paise=m.get("actual_amount_paise"),
+            amount_gap_paise=m.get("amount_gap_paise"),
         ))
 
     for e in result["exceptions"]:

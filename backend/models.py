@@ -23,6 +23,7 @@ class BatchRun(Base):
     records_processed = Column(Integer)
     total_time_sec = Column(Float)
     records_per_sec = Column(Float)
+    orders_available = Column(Boolean)
 
     matches = relationship("Match", back_populates="run", cascade="all, delete-orphan")
     exceptions = relationship("Exception_", back_populates="run", cascade="all, delete-orphan")
@@ -41,6 +42,10 @@ class Match(Base):
     tier = Column(String)
     confidence = Column(Float)
     reason = Column(Text)
+    match_subtype = Column(String)
+    expected_amount_paise = Column(BigInteger)
+    actual_amount_paise = Column(BigInteger)
+    amount_gap_paise = Column(BigInteger)
     status = Column(String)
 
     run = relationship("BatchRun", back_populates="matches")

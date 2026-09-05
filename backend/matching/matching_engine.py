@@ -20,14 +20,19 @@ AMOUNT_TOLERANCE_PAISE = 2000   # ~ up to Rs 20 of extra bank charges/rounding
 DATE_TOLERANCE_DAYS = 3
 
 def load_data(base="/home/claude"):
-    settlement = pd.read_csv(f"{base}/settlement_report.csv")
+    settlement_path = f"{base}/settlement_report.csv"
+    fallback_settlement_path = f"{base}/settlement_report (1).csv"
+    if not pd.io.common.file_exists(settlement_path) and pd.io.common.file_exists(fallback_settlement_path):
+        settlement_path = fallback_settlement_path
+    settlement = pd.read_csv(settlement_path)
     ledger = pd.read_csv(f"{base}/bank_ledger.csv")
     ledger["date"] = pd.to_datetime(ledger["date"])
     return settlement, ledger
 
 def build_batches(settlement: pd.DataFrame) -> pd.DataFrame:
-    """Group individual payments into settlement batches (many-to-one)."""
-    batches = settlement.groupby(["settlement_id", "settlement_utr", "settled_at"]).agg(
+    """Group payment rows into settlement batches before matching to bank payouts."""
+    payments = settlement[settlement["type"].astype(str).str.lower() == "payment"].copy()
+    batches = payments.groupby(["settlement_id", "settlement_utr", "settled_at"]).agg(
         n_payments=("entity_id", "count"),
         batch_total=("settled_amount", "sum"),
     ).reset_index()
@@ -35,20 +40,21 @@ def build_batches(settlement: pd.DataFrame) -> pd.DataFrame:
     return batches
 
 def extract_utr_candidates(narration: str):
-    """Pull anything that looks like a UTR-shaped token out of a messy narration string."""
-    # UTRs in our data look like digits+letters, e.g. 2026000020vxp0rj
-    # also handle the reformatted case: "202600-0061" (split with a dash)
-    tokens = re.findall(r"[0-9]{6,}[a-z0-9]*", narration.lower())
-    dashed = re.findall(r"[0-9]{4,}-[0-9]{3,}", narration.lower())
-    return tokens + [d.replace("-", "") for d in dashed]
+    """Pull UTR-shaped tokens from narration, ignoring plain numeric noise."""
+    text = str(narration or "").lower()
+    tokens = re.findall(r"[0-9]{6,}[a-z][a-z0-9]*", text)
+    dashed = re.findall(r"[0-9]{4,}-[0-9]{3,}", text)
+    normalized_dashed = [d.replace("-", "") for d in dashed]
+    return tokens + normalized_dashed
 
 def tier1_exact_match(batches: pd.DataFrame, ledger: pd.DataFrame):
     matches, remaining_batches = [], []
     used_ledger_ids = set()
+    ordered_ledger = ledger.sort_values(by=["date", "entry_id"]).reset_index(drop=True)
 
     for _, b in batches.iterrows():
         found = None
-        for _, l in ledger.iterrows():
+        for _, l in ordered_ledger.iterrows():
             if l["entry_id"] in used_ledger_ids:
                 continue
             if b["settlement_utr"] in str(l["narration"]) and \
@@ -75,41 +81,63 @@ def tier1_exact_match(batches: pd.DataFrame, ledger: pd.DataFrame):
 def tier2_fuzzy_match(batches: pd.DataFrame, ledger: pd.DataFrame):
     matches, still_remaining = [], []
     used_ledger_ids = set()
+    ordered_ledger = ledger.sort_values(by=["date", "entry_id"]).reset_index(drop=True)
 
     for _, b in batches.iterrows():
         best = None
         best_score = -1
-        for _, l in ledger.iterrows():
+        for _, l in ordered_ledger.iterrows():
             if l["entry_id"] in used_ledger_ids:
                 continue
 
-            amount_diff = abs(l["credit"] - b["batch_total"])
+            narration = str(l["narration"])
+            amount_diff = abs(int(l["credit"]) - int(b["batch_total"]))
             date_diff = abs((l["date"] - b["settled_at"]).days)
-            utr_candidates = extract_utr_candidates(str(l["narration"]))
-            utr_hit = any(b["settlement_utr"].replace("vxp0rj", "") in c for c in utr_candidates) or \
-                      b["settlement_utr"] in str(l["narration"])
+            utr_candidates = extract_utr_candidates(narration)
+            utr_hit = b["settlement_utr"] in utr_candidates or b["settlement_utr"] in narration.lower()
+            if not utr_hit:
+                continue
 
-            # Rule 1: amount within tolerance AND date within tolerance (covers fee_deduction, date_lag, rounding)
-            if amount_diff <= AMOUNT_TOLERANCE_PAISE and date_diff <= DATE_TOLERANCE_DAYS:
-                score = 0.9 - (amount_diff / 100000) - (date_diff * 0.02)
-                if score > best_score:
-                    best_score, best = score, (l, f"Amount within {amount_diff}p, date within {date_diff}d")
+            reason = None
+            subtype = None
+            score = -1
+            gap_ratio = amount_diff / int(b["batch_total"]) if int(b["batch_total"]) else 0
 
-            # Rule 2: UTR recognizable in narration even if amount is off (covers reference_mismatch)
-            elif utr_hit and date_diff <= DATE_TOLERANCE_DAYS:
+            if "PARTIAL" in narration.upper() and int(l["credit"]) < int(b["batch_total"]):
+                subtype = "settlement_partial_credit"
+                reason = (
+                    f"UTR exact, narration shows PARTIAL, expected {int(b['batch_total'])}p, "
+                    f"actual {int(l['credit'])}p, shortfall {int(b['batch_total']) - int(l['credit'])}p"
+                )
+                score = 0.88
+            elif gap_ratio <= 0.01 and date_diff <= DATE_TOLERANCE_DAYS:
+                subtype = "tax_line_mismatch"
+                reason = (
+                    f"UTR exact, small amount gap {amount_diff}p ({gap_ratio * 100:.2f}%), "
+                    f"flagged for review instead of exact match"
+                )
+                score = 0.91 - (date_diff * 0.02)
+            elif amount_diff <= AMOUNT_TOLERANCE_PAISE and date_diff <= DATE_TOLERANCE_DAYS:
+                subtype = "date_lag" if date_diff > 0 else "amount_tolerance"
+                reason = f"UTR exact, amount gap {amount_diff}p, date gap {date_diff}d"
+                score = 0.84 - (amount_diff / 100000) - (date_diff * 0.02)
+            elif "PARTIAL" in narration.upper() and int(l["credit"]) < int(b["batch_total"]):
+                subtype = "settlement_partial_credit"
+                reason = (
+                    f"UTR exact, narration shows PARTIAL, expected {int(b['batch_total'])}p, "
+                    f"actual {int(l['credit'])}p, shortfall {int(b['batch_total']) - int(l['credit'])}p"
+                )
+                score = 0.88
+            elif date_diff <= DATE_TOLERANCE_DAYS:
+                subtype = "reference_mismatch"
+                reason = f"UTR recognizable in narration, amount/date not exact; amount gap {amount_diff}p, date gap {date_diff}d"
                 score = 0.7 - (date_diff * 0.02)
-                if score > best_score:
-                    best_score, best = score, (l, "UTR recognizable in narration despite formatting")
 
-            # Rule 3: partial refund pattern -- REQUIRES UTR evidence, not just narration keyword,
-            # otherwise this rule can steal a legitimate match away from its real batch (see log.md)
-            elif "PARTIAL" in str(l["narration"]).upper() and l["credit"] < b["batch_total"] and utr_hit:
-                score = 0.75
-                if score > best_score:
-                    best_score, best = score, (l, "UTR matches, narration flags PARTIAL settlement, lower amount consistent with a refund deduction")
+            if reason is not None and score > best_score:
+                best_score, best = score, (l, reason, subtype, amount_diff)
 
         if best is not None:
-            l, reason = best
+            l, reason, subtype, amount_diff = best
             used_ledger_ids.add(l["entry_id"])
             matches.append({
                 "settlement_id": b["settlement_id"],
@@ -118,6 +146,10 @@ def tier2_fuzzy_match(batches: pd.DataFrame, ledger: pd.DataFrame):
                 "tier": "fuzzy",
                 "confidence": round(best_score, 2),
                 "reason": reason,
+                "match_subtype": subtype,
+                "expected_amount_paise": int(b["batch_total"]),
+                "actual_amount_paise": int(l["credit"]),
+                "amount_gap_paise": int(amount_diff),
             })
         else:
             still_remaining.append(b)

@@ -9,3 +9,4 @@
    .vscode/
    .idea/
    *.log
+   pipeline_output.json

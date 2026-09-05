@@ -20,10 +20,6 @@ from models import BatchRun, Match, Exception_, Investigation
 
 def test_entity_extraction():
     """Test that entity extraction works correctly."""
-    print("\n" + "=" * 70)
-    print("TEST 1: Entity Extraction")
-    print("=" * 70)
-    
     test_cases = [
         ("What happened to settlement setl_100002RP?",
          {"settlement_ids": ["setl_100002RP"], "order_ids": [], "amounts": []}),
@@ -44,37 +40,20 @@ def test_entity_extraction():
         settlement_match = set(result["settlement_ids"]) == set(expected["settlement_ids"])
         order_match = set(result["order_ids"]) == set(expected["order_ids"])
         
-        status = "✓" if (amounts_match and settlement_match and order_match) else "✗"
-        print(f"\n{status} Q: {question}")
-        print(f"  Extracted:")
-        if result["settlement_ids"]:
-            print(f"    - Settlements: {result['settlement_ids']}")
-        if result["order_ids"]:
-            print(f"    - Orders: {result['order_ids']}")
-        if result["amounts"]:
-            print(f"    - Amounts: ₹{[x/100 for x in result['amounts']]}")
+        assert amounts_match, question
+        assert settlement_match, question
+        assert order_match, question
 
 
 def test_qa_workflow():
     """Test the full QA workflow with a real run."""
-    print("\n" + "=" * 70)
-    print("TEST 2: Full QA Workflow (if runs exist)")
-    print("=" * 70)
-    
     db = SessionLocal()
     
     try:
         # Find a run
         run = db.query(BatchRun).order_by(BatchRun.id.desc()).first()
         
-        if not run:
-            print("\n⚠ No runs found. Run the pipeline first: POST /run")
-            return
-        
-        print(f"\nUsing run {run.id} (created {run.run_at})")
-        print(f"  - {run.matched_batches}/{run.total_settlement_batches} matched ({run.match_rate_pct:.1f}%)")
-        print(f"  - {run.total_exceptions} exceptions")
-        
+        assert run is not None, "No persisted runs found"
         # Test queries
         test_questions = [
             ("How many settlements matched in this run?", None),
@@ -82,9 +61,7 @@ def test_qa_workflow():
         ]
         
         for question, run_id in test_questions:
-            print(f"\nQ: {question}")
             entities = extract_entities(question)
-            print(f"  Entities: {entities}")
             
             # Query data
             run_data = query_run_data(
@@ -95,18 +72,9 @@ def test_qa_workflow():
                 amounts=entities["amounts"] if entities["amounts"] else None,
             )
             
-            print(f"  Data retrieved:")
-            print(f"    - Matches: {len(run_data['matches'])}")
-            print(f"    - Exceptions: {len(run_data['exceptions'])}")
-            print(f"    - Investigations: {len(run_data['investigations'])}")
-            
-            # Show sample data
-            if run_data['matches'][:1]:
-                m = run_data['matches'][0]
-                print(f"    - Sample match: {m['settlement_id']} → {m['matched_entry_id']} (tier: {m['tier']})")
-            if run_data['exceptions'][:1]:
-                e = run_data['exceptions'][0]
-                print(f"    - Sample exception: {e['reference_id']} ({e['exception_type']})")
+            assert "matches" in run_data
+            assert "exceptions" in run_data
+            assert "investigations" in run_data
             
     finally:
         db.close()
@@ -114,10 +82,6 @@ def test_qa_workflow():
 
 def test_prompt_building():
     """Test that prompts are built correctly."""
-    print("\n" + "=" * 70)
-    print("TEST 3: LLM Prompt Building")
-    print("=" * 70)
-    
     sample_run_data = {
         "run_summary": {
             "run_id": 1,
@@ -163,37 +127,10 @@ def test_prompt_building():
     
     prompt = build_qa_prompt("What happened to setl_100002RP?", sample_run_data)
     
-    print("\nPrompt length:", len(prompt), "characters")
-    print("\nPrompt preview (first 500 chars):")
-    print("-" * 70)
-    print(prompt[:500])
-    print("...")
-    
-    # Verify prompt contains key information
-    checks = [
-        ("Contains question", "What happened to setl_100002RP?" in prompt),
-        ("Contains run summary", "Run SUMMARY:" in prompt or "run summary" in prompt),
-        ("Contains match data", "setl_100001RP" in prompt),
-        ("Contains exception data", "setl_100002RP" in prompt),
-        ("Contains investigation data", "explained" in prompt),
-        ("Contains instructions", "INSTRUCTIONS:" in prompt or "instructions" in prompt),
-    ]
-    
-    print("\n\nPrompt integrity checks:")
-    for check_name, passed in checks:
-        status = "✓" if passed else "✗"
-        print(f"  {status} {check_name}")
-
-
-if __name__ == "__main__":
-    print("\n" + "=" * 70)
-    print("QA LAYER INTEGRATION TEST")
-    print("=" * 70)
-    
-    test_entity_extraction()
-    test_prompt_building()
-    test_qa_workflow()
-    
-    print("\n" + "=" * 70)
-    print("✓ QA Layer tests complete")
-    print("=" * 70)
+    assert len(prompt) > 0
+    assert "What happened to setl_100002RP?" in prompt
+    assert "Run SUMMARY:" in prompt or "run summary" in prompt
+    assert "setl_100001RP" in prompt
+    assert "setl_100002RP" in prompt
+    assert "explained" in prompt
+    assert "INSTRUCTIONS:" in prompt or "instructions" in prompt
