@@ -49,29 +49,6 @@ This project is designed to show three things together:
 
 ---
 
-## 3. What makes it different from a 2-source demo
-
-Most settlement reconciliation demos stop at:
-
-- Razorpay settlement report
-- bank statement
-
-Reconcile adds a **third source**:
-
-- merchant **orders database**
-
-That allows it to detect issues a 2-source workflow cannot see.
-
-### Phantom charge
-Razorpay captured and settled the money, but the merchant's internal order state is failed or pending. This suggests a webhook or fulfillment-state failure.
-
-### Ghost order
-The internal system shows a completed order, but there is no corresponding Razorpay settlement/payment trail.
-
-This third-source check matters because finance control is not only about whether money and bank match — it is also about whether money movement and internal business state agree.
-
----
-
 ## 4. High-level system flow
 
 ```text
