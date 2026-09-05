@@ -82,7 +82,7 @@ The model is intentionally naive and explainable rather than overfit.
 ```text
 settlement_report.csv ─┐
 bank_ledger.csv ───────┼─→ Tier 1 exact → Tier 2 fuzzy → Tier 3 LLM (leftovers only)
-          │                    │
+                                    │
                                     │                    └─ deterministic guardrail
                                     │
                                     ├─ DB reconciliation (phantom charge / ghost order)
